@@ -3,7 +3,19 @@ import test from "node:test";
 import { HOUR } from "../shared/weather.js";
 import { normalizeOpenMeteo } from "../shared/open-meteo.js";
 import { createApp } from "../server/app.js";
-import { normalizeMetNorway, normalizeNws } from "../server/providers.js";
+import { findLocations, normalizeMetNorway, normalizeNws } from "../server/providers.js";
+
+test("qualified city searches filter by state before limiting results", async () => {
+  const base = { name: "Portland", latitude: 45, longitude: -123, country_code: "US", timezone: "America/Los_Angeles" };
+  for (const query of ["Portland, OR", "Portland or", "Portland, Oregon", "Portland Oregon"]) {
+    const matches = await findLocations(query, { fetcher: async (url) => {
+      assert.equal(url.searchParams.get("name"), "Portland");
+      assert.equal(url.searchParams.get("countryCode"), "US");
+      return Response.json({ results: [...Array(8).fill({ ...base, admin1: "Maine" }), { ...base, admin1: "Oregon" }] });
+    } });
+    assert.deepEqual(matches.map(({ region }) => region), ["Oregon"]);
+  }
+});
 
 const NOW = Date.parse("2026-11-22T16:13:00Z");
 const START = Math.floor(NOW / HOUR) * HOUR;

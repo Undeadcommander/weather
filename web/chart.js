@@ -4,6 +4,8 @@ const LINE_STYLES = {
   "open-meteo": { color: "#6748d4", dash: [] },
   "met-norway": { color: "#0c8076", dash: [7, 4] },
   nws: { color: "#b55a13", dash: [2, 5] },
+  gfs: { color: "#2366ad", dash: [9, 3, 2, 3] },
+  icon: { color: "#a3336c", dash: [12, 4] },
 };
 
 function chartScale(metric, values) {

@@ -72,6 +72,16 @@ async function openPages(page, { failMet = false, badNws = false } = {}) {
   return { requests, errors };
 }
 
+test("Pages can compare both additional models through the last reported hour", async ({ page }) => {
+  const { requests, errors } = await openPages(page);
+  for (const name of ["NOAA GFS", "DWD ICON"]) await page.getByRole("switch", { name: `Compare ${name}` }).check();
+  await expect(page.locator("#source-count")).toHaveText("5 reporting");
+  expect(requests.map(url => url.searchParams.get("models"))).toEqual(expect.arrayContaining(["gfs_seamless", "icon_seamless"]));
+  await page.locator("#dates button").last().click();
+  await expect(page.locator("#hours option").last()).toHaveAttribute("value", String(START + 72 * HOUR));
+  expect(errors).toEqual([]);
+});
+
 test("Pages serves all assets below the repository path and compares three direct providers", async ({ page }) => {
   const { requests, errors } = await openPages(page);
   await expect(page.locator("#source-count")).toHaveText("3 reporting");

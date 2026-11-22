@@ -314,8 +314,10 @@ function render() {
   const now = Date.now();
   const { timezone } = preferences.location;
   const active = inComparison();
-  const choices = dateChoices(now, timezone);
-  const times = timesForDay(now, choices[state.day].key, timezone);
+  const end = Math.max(atHour(now), ...active.map(({ id }) => state.results.get(id)?.rows?.at(-1)?.t ?? 0));
+  const choices = dateChoices(now, timezone, end);
+  state.day = Math.min(state.day, choices.length - 1);
+  const times = timesForDay(now, choices[state.day].key, timezone, end);
   const { metric } = state;
   const { unit } = preferences;
   const reportingSources = active.filter(({ id }) => reporting(id));
@@ -336,7 +338,8 @@ function render() {
 }
 
 async function requestForecast(source, location, signal) {
-  if (source === "open-meteo") return fetchOpenMeteo(location, signal);
+  const feed = SOURCES.find(({ id }) => id === source);
+  if (source === "open-meteo" || feed.model) return fetchOpenMeteo(location, signal, feed);
   if (STATIC_HOSTING) return fetchBrowserForecast(source, location, signal);
   const query = new URLSearchParams({ source, lat: location.latitude, lon: location.longitude });
   const response = await fetch(`/api/weather?${query}`, { signal });
@@ -383,7 +386,11 @@ function loadForecasts(force = false) {
   render();
 }
 
+let locationVersion = 0;
 function chooseLocation(location) {
+  locationVersion++;
+  $("detect-location").disabled = false;
+  $("geo-status").textContent = "";
   for (const controller of state.pending.values()) controller.abort();
   state.pending.clear();
   state.results.clear();
@@ -429,16 +436,6 @@ $("inspect-gap").addEventListener("click", () => {
   $("hours").focus();
 });
 
-function syncNav() {
-  const anchor = ["#comparison", "#sources"].includes(location.hash) ? location.hash : "#overview";
-  for (const link of document.querySelectorAll(".top-nav a")) {
-    if (link.getAttribute("href") === anchor) link.setAttribute("aria-current", "location");
-    else link.removeAttribute("aria-current");
-  }
-}
-addEventListener("hashchange", syncNav);
-syncNav();
-
 function setupSearch() {
   const form = $("location-form");
   const input = $("location-query");
@@ -472,6 +469,32 @@ function setupSearch() {
     input.setAttribute("aria-expanded", "true");
     message.textContent = note;
   }
+
+  $("detect-location").addEventListener("click", () => {
+    close();
+    const status = $("geo-status");
+    if (!navigator.geolocation) {
+      status.textContent = "Location detection is unavailable. Search for a city instead.";
+      return;
+    }
+    const version = ++locationVersion;
+    $("detect-location").disabled = true;
+    status.textContent = "Finding your location…";
+    navigator.geolocation.getCurrentPosition(({ coords }) => {
+      if (version !== locationVersion) return;
+      input.value = "";
+      close();
+      chooseLocation({ name: "Current location", region: "", country: "", countryCode: "",
+        latitude: Number(coords.latitude.toFixed(3)), longitude: Number(coords.longitude.toFixed(3)),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
+      announce("Loading forecasts for your current location.");
+    }, (error) => {
+      if (version !== locationVersion) return;
+      $("detect-location").disabled = false;
+      status.textContent = error.code === 1 ? "Location access was denied. Search for a city instead." :
+        "Could not find your location. Try again or search for a city.";
+    }, { timeout: 12000, maximumAge: 300000 });
+  });
 
   async function search(query) {
     clearSearch();

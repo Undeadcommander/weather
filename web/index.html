@@ -35,11 +35,6 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="#overview"><img src="/assets/icon.svg" width="36" height="36" alt=""><span>Skylens</span></a>
-      <nav class="top-nav" aria-label="Dashboard">
-        <a href="#overview" aria-current="location">Overview</a>
-        <a href="#comparison">Compare</a>
-        <a href="#sources">Sources</a>
-      </nav>
       <div class="segmented units" role="group" aria-label="Units">
         <button type="button" data-unit="F" aria-label="Fahrenheit and miles per hour" aria-pressed="true">°F</button>
         <button type="button" data-unit="C" aria-label="Celsius and kilometers per hour" aria-pressed="false">°C</button>
@@ -56,7 +51,7 @@
       <div class="tools">
         <form id="location-form" class="location-search" role="search">
           <svg class="icon search-icon" aria-hidden="true"><use href="#icon-search"/></svg>
-          <input id="location-query" name="q" type="search" placeholder="Search for a city" aria-label="Search for a city"
+          <input id="location-query" name="q" type="search" placeholder="City or city, state" aria-label="Search for a city or city and state"
             role="combobox" aria-autocomplete="list" aria-controls="location-options" aria-expanded="false"
             maxlength="80" autocomplete="off" spellcheck="false">
           <div id="location-popover" class="search-popover" hidden>
@@ -64,12 +59,14 @@
             <p id="location-message" role="status"></p>
           </div>
         </form>
+        <button id="detect-location" type="button" class="icon-button" title="Use my location" aria-label="Use my location"><svg class="icon" aria-hidden="true"><use href="#icon-pin"/></svg></button>
         <button class="icon-button refresh-button" type="button" id="refresh" aria-label="Refresh forecasts" title="Refresh forecasts">
           <svg class="icon" aria-hidden="true"><use href="#icon-refresh"/></svg>
         </button>
       </div>
     </div>
 
+    <p id="geo-status" role="status"></p>
     <section class="hero" aria-labelledby="hero-location">
       <div class="hero-content">
         <h2 id="hero-location" class="hero-location"><svg class="icon" aria-hidden="true"><use href="#icon-pin"/></svg><span>San Francisco, California</span></h2>

@@ -48,7 +48,7 @@ export function reading(t, values) {
 
 export function validRows(rows, now) {
   const start = Math.floor(now / HOUR) * HOUR - HOUR;
-  const end = start + 98 * HOUR;
+  const end = start + 17 * 24 * HOUR;
   const distinct = new Map();
   for (const row of rows) {
     if (!Number.isFinite(row.t) || row.t % HOUR || row.t < start || row.t > end) continue;

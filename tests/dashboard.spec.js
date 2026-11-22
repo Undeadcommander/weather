@@ -343,16 +343,24 @@ test("recovers from a total provider outage and unavailable browser storage", as
   await expect(page.getByRole("button", { name: "Favorite MET Norway" })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("uses device coordinates only after the location button is clicked", async ({ page, context }) => {
+  await context.grantPermissions(["geolocation"]);
+  await context.setGeolocation({ latitude: 42.36, longitude: -71.06 });
+  const requests = await mockDashboard(page);
+  await initialForecast(page);
+  expect(requests.some(request => request.latitude === 42.36)).toBe(false);
+  await page.getByRole("button", { name: "Use my location" }).click();
+  await expect(page.locator("#hero-location")).toHaveText("Current location");
+  await expect.poll(() => requests.some(request => request.latitude === 42.36)).toBe(true);
+});
+
 test("navigation and source links work, with no automated accessibility violations", async ({ page }) => {
   await mockDashboard(page);
   await initialForecast(page);
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
-  await page.getByRole("link", { name: "Compare", exact: true }).click();
-  await expect(page).toHaveURL(/#comparison$/);
-  await expect(page.getByRole("link", { name: "Compare", exact: true })).toHaveAttribute("aria-current", "location");
-  await page.getByRole("link", { name: "Sources", exact: true }).click();
-  await expect(page).toHaveURL(/#sources$/);
+  await expect(page.getByRole("navigation", { name: "Dashboard" })).toHaveCount(0);
+  await page.keyboard.press("Tab");
   await page.getByRole("link", { name: "Skylens" }).click();
   await expect(page).toHaveURL(/#overview$/);
   await expect(page.getByRole("link", { name: "MET Norway" })).toHaveAttribute("href", "https://www.met.no/en");

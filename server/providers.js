@@ -76,7 +76,7 @@ function nwsWind(value) {
 export function normalizeMetNorway(data) {
   const timeseries = data?.properties?.timeseries;
   if (!Array.isArray(timeseries)) return [];
-  return timeseries.slice(0, 192).map((item) => {
+  return timeseries.map((item) => {
     const values = item?.data?.instant?.details;
     const symbol = item?.data?.next_1_hours?.summary?.symbol_code;
     return reading(Date.parse(item?.time), {
@@ -93,7 +93,7 @@ export function normalizeMetNorway(data) {
 export function normalizeNws(data) {
   const periods = data?.properties?.periods;
   if (!Array.isArray(periods)) return [];
-  return periods.slice(0, 192).map((period) => {
+  return periods.map((period) => {
     const t = Date.parse(period?.startTime);
     const temp = bounded(period?.temperature, -148, 149);
     return reading(t, {
@@ -139,9 +139,32 @@ function cleanLabel(value) {
   return typeof value === "string" ? value.replace(/[\p{Cc}\p{Cf}]/gu, "").trim().slice(0, 100) : "";
 }
 
+const states = new Map(Object.entries({
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado",
+  CT: "Connecticut", DE: "Delaware", DC: "District of Columbia", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas",
+  KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland", MA: "Massachusetts",
+  MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana",
+  NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico",
+  NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma",
+  OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota",
+  TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+}));
+
 export async function findLocations(query, { fetcher, contact }) {
+  const parts = query.trim().split(/\s*,\s*/);
+  if (parts.length === 1) {
+    const lower = parts[0].toLowerCase();
+    const suffix = [...states.keys(), ...states.values()].sort((left, right) => right.length - left.length)
+      .find(label => lower.endsWith(" " + label.toLowerCase()));
+    if (suffix) parts.splice(0, 1, parts[0].slice(0, -suffix.length).trim(), suffix);
+  }
+  const [city, region = ""] = parts;
+  const state = states.get(region.toUpperCase()) ?? [...states.values()].find(name => name.toLowerCase() === region.toLowerCase());
   const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
-  url.search = new URLSearchParams({ name: query, count: "8", language: "en", format: "json" });
+  url.search = new URLSearchParams({ name: city, count: region ? "100" : "8", language: "en", format: "json",
+    ...(state && { countryCode: "US" }) });
   const request = upstream(fetcher, AbortSignal.timeout(3500), contact);
   const { data } = await request(url);
   if (!data || typeof data !== "object" || Array.isArray(data) ||
@@ -149,7 +172,9 @@ export async function findLocations(query, { fetcher, contact }) {
     throw new ProviderError("Invalid geocoding response");
   }
   const locations = [];
-  for (const item of (data.results ?? []).slice(0, 8)) {
+  for (const item of data.results ?? []) {
+    if (region && ((state && item?.country_code !== "US") ||
+        cleanLabel(item?.admin1).toLowerCase() !== (state ?? region).toLowerCase())) continue;
     const name = cleanLabel(item?.name);
     const latitude = bounded(item?.latitude, -90, 90);
     const longitude = bounded(item?.longitude, -180, 180);
@@ -163,6 +188,7 @@ export async function findLocations(query, { fetcher, contact }) {
       countryCode: /^[A-Z]{2}$/.test(item.country_code) ? item.country_code : "",
       timezone: item.timezone,
     });
+    if (locations.length === 8) break;
   }
   return locations;
 }

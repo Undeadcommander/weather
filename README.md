@@ -2,7 +2,7 @@
 
 # Skylens
 
-Skylens compares hourly forecasts for the same location and time. Search for a city, choose sources, and compare temperature, rain chance, or wind for today and the next two days. The largest difference links to the exact forecast values. Source selections, favorites, units, and the last city are stored in the current browser.
+Skylens compares hourly forecasts for the same location and time. Search for a city (for example, `Portland, OR` or `Portland, Maine`) or use the location-pin button to request your device location. Detected locations use the device time zone. Browse through the last hour available from your selected sources, up to 16 forecast days. Enable NOAA GFS and DWD ICON in the source list to compare individual models delivered by Open-Meteo. The largest difference links to the exact forecast values. Source selections, favorites, units, and the last location are stored in the current browser.
 
 ## Run locally
 

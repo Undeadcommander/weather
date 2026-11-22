@@ -19,6 +19,8 @@ export const SOURCES = [
     coverage: "U.S. and territories · NOAA",
     icon: "cloud",
   },
+  { id: "gfs", name: "NOAA GFS", coverage: "Global model via Open-Meteo", model: "gfs_seamless", icon: "wind" },
+  { id: "icon", name: "DWD ICON", coverage: "German Weather Service model via Open-Meteo", model: "icon_seamless", icon: "sun" },
 ];
 
 export const DEFAULT_LOCATION = {

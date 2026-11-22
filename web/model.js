@@ -23,9 +23,10 @@ export function dateKey(time, timezone) {
   return `${year}-${month}-${day}`;
 }
 
-export function dateChoices(now, timezone) {
+export function dateChoices(now, timezone, end) {
   const base = Date.parse(`${dateKey(now, timezone)}T00:00:00Z`);
-  return [0, 1, 2].map((offset) => {
+  const last = Date.parse(`${dateKey(end, timezone)}T00:00:00Z`);
+  return Array.from({ length: 1 + (last - base) / (24 * HOUR) }, (_, offset) => {
     const time = base + offset * 24 * HOUR;
     return {
       key: new Date(time).toISOString().slice(0, 10),
@@ -58,7 +59,7 @@ export function normalizePreferences(value) {
     Number.isFinite(saved.longitude) && Math.abs(saved.longitude) <= 180 && validTimeZone(saved.timezone);
   return {
     unit: value?.unit === "C" ? "C" : "F",
-    enabled: ids.filter((id) => !Array.isArray(value?.enabled) || value.enabled.includes(id)),
+    enabled: SOURCES.filter(({ id, model }) => Array.isArray(value?.enabled) ? value.enabled.includes(id) : !model).map(({ id }) => id),
     favorites: ids.filter((id) => Array.isArray(value?.favorites) && value.favorites.includes(id)),
     favoritesOnly: value?.favoritesOnly === true,
     location: locationIsValid ? saved : DEFAULT_LOCATION,
@@ -73,10 +74,11 @@ export function atHour(now) {
   return Math.floor(now / HOUR) * HOUR;
 }
 
-export function timesForDay(now, day, timezone) {
-  const start = atHour(now);
+export function timesForDay(now, day, timezone, end = Infinity) {
+  const midnight = Date.parse(`${day}T00:00:00Z`);
+  const start = Math.max(atHour(now), midnight - 15 * HOUR);
   const times = [];
-  for (let t = start; t <= start + 74 * HOUR; t += HOUR) {
+  for (let t = start; t <= Math.min(end, midnight + 39 * HOUR); t += HOUR) {
     if (dateKey(t, timezone) === day) times.push(t);
     else if (times.length) break;
   }

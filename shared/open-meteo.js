@@ -19,7 +19,7 @@ export function normalizeOpenMeteo(data) {
   const hourly = data?.hourly;
   if (!Array.isArray(hourly?.time)) return [];
   // Open-Meteo reports rain probability for the hour ending at each timestamp.
-  return hourly.time.slice(0, 192).map((time, i) => reading(Number.isInteger(time) ? time * 1000 : NaN, {
+  return hourly.time.map((time, i) => reading(Number.isInteger(time) ? time * 1000 : NaN, {
     temp: hourly.temperature_2m?.[i],
     rain: hourly.time[i + 1] === time + HOUR / 1000 ? hourly.precipitation_probability?.[i + 1] : null,
     wind: hourly.wind_speed_10m?.[i],
@@ -29,10 +29,11 @@ export function normalizeOpenMeteo(data) {
   }));
 }
 
-export async function fetchOpenMeteo({ latitude, longitude }, signal) {
+export async function fetchOpenMeteo({ latitude, longitude }, signal, source = { id: "open-meteo" }) {
   const url = new URL("/v1/forecast", OPEN_METEO_ORIGIN);
   url.search = new URLSearchParams({
-    latitude, longitude, timezone: "GMT", timeformat: "unixtime", forecast_days: "5",
+    latitude, longitude, timezone: "GMT", timeformat: "unixtime", forecast_days: "16",
+    ...(source.model && { models: source.model }),
     temperature_unit: "celsius", wind_speed_unit: "kmh",
     hourly: "temperature_2m,precipitation_probability,wind_speed_10m,relative_humidity_2m,weather_code,is_day",
   });
@@ -51,5 +52,5 @@ export async function fetchOpenMeteo({ latitude, longitude }, signal) {
   const retrievedAt = Date.now();
   const rows = validRows(normalizeOpenMeteo(data), retrievedAt);
   if (!rows.length) throw new Error("Open-Meteo forecast contains no usable hours");
-  return { source: "open-meteo", status: "ok", rows, retrievedAt, stale: false };
+  return { source: source.id, status: "ok", rows, retrievedAt, stale: false };
 }

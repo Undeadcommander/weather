@@ -1,8 +1,8 @@
-import { HOUR, SOURCES } from "../shared/weather.js";
+import { HOUR } from "../shared/weather.js";
 import { OPEN_METEO_ORIGIN } from "../shared/open-meteo.js";
 import { findLocations, getForecast, ProviderError } from "./providers.js";
 
-const SOURCE_IDS = new Set(SOURCES.map(({ id }) => id).filter((id) => id !== "open-meteo"));
+const SOURCE_IDS = new Set(["met-norway", "nws"]);
 const SECURITY_HEADERS = {
   "Content-Security-Policy": [
     "default-src 'self'", "script-src 'self'", "style-src 'self'", "img-src 'self'",
@@ -12,7 +12,7 @@ const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Referrer-Policy": "no-referrer",
-  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(self)",
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 

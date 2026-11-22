@@ -22,7 +22,7 @@ test("preferences recover from corrupt storage and keep only available source ID
 
 test("calendar choices use the city date across UTC boundaries and the new year", () => {
   const now = Date.parse("2027-01-01T04:20:00Z");
-  assert.deepEqual(dateChoices(now, "America/Los_Angeles").map(({ key }) => key),
+  assert.deepEqual(dateChoices(now, "America/Los_Angeles", now + 48 * HOUR).map(({ key }) => key),
     ["2026-12-31", "2027-01-01", "2027-01-02"]);
   assert.equal(dateKey(now, "Asia/Tokyo"), "2027-01-01");
   assert.equal(locationLabel({ name: "Singapore", country: "Singapore", region: "" }), "Singapore");
