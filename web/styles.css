@@ -129,6 +129,11 @@ ul { list-style: none; padding: 0; }
 #geo-status:not(:empty) { margin: 0 0 1rem; color: var(--muted); }
 [data-source="gfs"] { --source-color: #2366ad; --source-fill: #e8f2ff; }
 [data-source="icon"] { --source-color: #a3336c; --source-fill: #fcebf2; }
+[data-source="ecmwf"] { --source-color: #4c6b20; --source-fill: #eff5e4; }
+[data-source="gem"] { --source-color: #b33838; --source-fill: #ffeded; }
+[data-source="jma"] { --source-color: #596779; --source-fill: #eef1f6; }
+[data-source="meteofrance"] { --source-color: #087b9a; --source-fill: #e5f5fb; }
+[data-source="ukmo"] { --source-color: #865021; --source-fill: #faf0e5; }
 .units button { min-width: 40px; }
 .page { max-width: 1360px; margin: 0 auto; padding: 2rem 2.5rem 0; }
 .page-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: end; margin-bottom: 1.4rem; }
@@ -353,6 +358,7 @@ ul { list-style: none; padding: 0; }
 .source-panel .panel-heading { margin: 0 .15rem .65rem; align-items: start; }
 .count-pill { color: var(--accent-dark); background: var(--lavender); border-radius: 999px; padding: .25rem .58rem; font-weight: 800; font-size: .82rem; white-space: nowrap; }
 .source-list { display: grid; }
+.source-note { color: var(--muted); font-size: .78rem; line-height: 1.45; margin: .65rem .15rem; }
 .source-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .52rem; align-items: center; min-height: 58px; padding: .56rem .12rem; }
 .source-card + .source-card { border-top: 1px solid var(--line); }
 .source-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--source-color); background: var(--source-fill); }

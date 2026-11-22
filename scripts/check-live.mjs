@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import worker from "../dist/server/index.js";
 import { fetchOpenMeteo } from "../shared/open-meteo.js";
+import { SOURCES } from "../shared/weather.js";
 
 const origin = "https://skylens.test";
 const fetchApp = (path, init) => worker.fetch(new Request(origin + path, init));
@@ -30,9 +31,10 @@ async function forecast(location, source, point, status = "ok") {
     }
   }
   const label = `${location} · ${source}`;
-  if (source === "open-meteo") {
+  const feed = SOURCES.find(({ id }) => id === source);
+  if (source === "open-meteo" || feed?.model) {
     const start = performance.now();
-    const data = await fetchOpenMeteo({ latitude: point.lat, longitude: point.lon });
+    const data = await fetchOpenMeteo({ latitude: point.lat, longitude: point.lon }, undefined, feed);
     verify(data);
     console.log(`${label} passed in ${Math.round(performance.now() - start)} ms`);
     return data;
@@ -52,6 +54,11 @@ const results = await Promise.allSettled([
       name === "São Paulo" && countryCode === "BR" && timezone === "America/Sao_Paulo"));
   }),
 ]);
+
+// Check individual models in sequence to avoid bursting the public API.
+for (const { id } of SOURCES.filter(({ model }) => model)) {
+  results.push(...await Promise.allSettled([forecast("San Francisco", id, sf)]));
+}
 
 for (const result of results) {
   if (result.status === "rejected") {

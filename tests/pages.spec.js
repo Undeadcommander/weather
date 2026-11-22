@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
-import { HOUR } from "../shared/weather.js";
+import { HOUR, SOURCES } from "../shared/weather.js";
 
 const START = Date.parse("2026-11-22T17:00:00Z");
 const ORIGIN = "http://127.0.0.1:4191";
@@ -31,11 +31,14 @@ async function openPages(page, { failMet = false, badNws = false } = {}) {
     const reply = (json) => route.fulfill({ json, headers });
     if (url.origin === "https://api.open-meteo.com") {
       expect(request.headers().referer).toBeUndefined();
+      const model = url.searchParams.get("models");
+      const hours = model && model !== "ecmwf_ifs025" ? 49 : 73;
       return reply({ hourly: {
-        time: Array.from({ length: 73 }, (_, index) => START / 1000 + index * 3600),
-        temperature_2m: Array(73).fill(12), precipitation_probability: Array(73).fill(20),
-        wind_speed_10m: Array(73).fill(10), relative_humidity_2m: Array(73).fill(80),
-        weather_code: Array(73).fill(3), is_day: Array(73).fill(1),
+        time: Array.from({ length: hours }, (_, index) => START / 1000 + index * 3600),
+        temperature_2m: Array(hours).fill(12),
+        precipitation_probability: Array(hours).fill(["jma_seamless", "meteofrance_seamless"].includes(model) ? null : 20),
+        wind_speed_10m: Array(hours).fill(10), relative_humidity_2m: Array(hours).fill(80),
+        weather_code: Array(hours).fill(3), is_day: Array(hours).fill(1),
       } });
     }
     if (url.origin === "https://api.met.no") {
@@ -72,14 +75,33 @@ async function openPages(page, { failMet = false, badNws = false } = {}) {
   return { requests, errors };
 }
 
-test("Pages can compare both additional models through the last reported hour", async ({ page }) => {
+test("Pages can compare all individual models through their reported forecast ranges", async ({ page }) => {
   const { requests, errors } = await openPages(page);
-  for (const name of ["NOAA GFS", "DWD ICON"]) await page.getByRole("switch", { name: `Compare ${name}` }).check();
-  await expect(page.locator("#source-count")).toHaveText("5 reporting");
-  expect(requests.map(url => url.searchParams.get("models"))).toEqual(expect.arrayContaining(["gfs_seamless", "icon_seamless"]));
+  const models = SOURCES.filter(({ model }) => model);
+  for (const { name } of models) await page.getByRole("switch", { name: `Compare ${name}` }).check();
+  await expect(page.locator("#source-count")).toHaveText("10 reporting");
+  await expect(page.locator("#legend li")).toHaveCount(10);
+  await expect(page.locator("#details tbody tr")).toHaveCount(10);
+  expect(requests.map(url => url.searchParams.get("models"))).toEqual(expect.arrayContaining(models.map(({ model }) => model)));
+  await page.getByRole("button", { name: "Rain", exact: true }).click();
+  for (const id of ["jma", "meteofrance"]) {
+    await expect(page.locator(`#legend li[data-source="${id}"]`)).toHaveAttribute("data-missing");
+    await expect(page.locator(`#details tbody tr[data-source="${id}"]`)).toContainText("—");
+  }
+  await page.getByRole("button", { name: "Temperature", exact: true }).click();
   await page.getByRole("button", { name: "Choose forecast date" }).click();
   await page.getByRole("button", { name: "Wednesday, November 25, 2026" }).click();
   await expect(page.locator("#hours option").last()).toHaveAttribute("value", String(START + 72 * HOUR));
+  await page.getByRole("combobox", { name: "Forecast hour" }).selectOption(String(START + 72 * HOUR));
+  await expect(page.locator('#details tbody tr[data-source="ecmwf"]')).toContainText("54°F");
+  await expect(page.locator('#details tbody tr[data-source="gem"]')).toContainText("—");
+  await page.getByRole("button", { name: "Favorite ECMWF IFS", exact: true }).click();
+  await page.getByRole("button", { name: "Compare favorites only" }).click();
+  await expect(page.locator("#source-count")).toHaveText("1 reporting");
+  await page.reload();
+  await expect(page.locator("#source-count")).toHaveText("1 reporting");
+  await expect(page.getByRole("switch", { name: "Compare ECMWF IFS", exact: true })).toBeChecked();
+  await expect(page.getByRole("button", { name: "Favorite ECMWF IFS", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect(errors).toEqual([]);
 });
 

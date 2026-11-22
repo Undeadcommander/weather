@@ -21,6 +21,11 @@ export const SOURCES = [
   },
   { id: "gfs", name: "NOAA GFS", coverage: "Global model via Open-Meteo", model: "gfs_seamless", icon: "wind" },
   { id: "icon", name: "DWD ICON", coverage: "German Weather Service model via Open-Meteo", model: "icon_seamless", icon: "sun" },
+  { id: "ecmwf", name: "ECMWF IFS", coverage: "Global · European Centre model via Open-Meteo", model: "ecmwf_ifs025", icon: "cloud" },
+  { id: "gem", name: "Canada GEM", coverage: "Global · Environment and Climate Change Canada model via Open-Meteo", model: "gem_seamless", icon: "wind" },
+  { id: "jma", name: "Japan JMA", coverage: "Global · Japan Meteorological Agency model via Open-Meteo", model: "jma_seamless", icon: "sun" },
+  { id: "meteofrance", name: "Météo-France", coverage: "Global · French weather service model via Open-Meteo", model: "meteofrance_seamless", icon: "cloud" },
+  { id: "ukmo", name: "UK Met Office", coverage: "Global · UK Met Office model via Open-Meteo", model: "ukmo_seamless", icon: "rain" },
 ];
 
 export const DEFAULT_LOCATION = {

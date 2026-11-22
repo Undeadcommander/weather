@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base } from "@playwright/test";
-import { DEFAULT_LOCATION, HOUR } from "../shared/weather.js";
+import { DEFAULT_LOCATION, HOUR, SOURCES } from "../shared/weather.js";
 import { OPEN_METEO_ORIGIN } from "../shared/open-meteo.js";
 
 const START = Date.parse("2026-11-22T17:00:00Z");
@@ -28,7 +28,7 @@ function fixture(source, latitude = DEFAULT_LOCATION.latitude, stale = false) {
   const rows = Array.from({ length: 78 }, (_, i) => ({
     t: START + i * HOUR,
     temp: (latitude === LONDON.latitude ? -4 : 0) +
-      ({ "open-meteo": 12 + (i > 20 ? 2 : 0), "met-norway": 13, nws: i === 5 ? 20 : 11 }[source]),
+      ({ "open-meteo": 12 + (i > 20 ? 2 : 0), "met-norway": 13, nws: i === 5 ? 20 : 11 }[source] ?? 14),
     rain: { "open-meteo": i === 3 ? 75 : 10, "met-norway": null, nws: i === 3 ? 15 : 0 }[source],
     wind: { "open-meteo": 16, "met-norway": 8, nws: i === 8 ? 35 : 21 }[source],
     humidity: 80,
@@ -56,7 +56,9 @@ async function mockDashboard(page, { forecast, cities } = {}) {
   async function routeForecast(route) {
     const url = new URL(route.request().url());
     const isDirect = url.origin === OPEN_METEO_ORIGIN;
-    const source = isDirect ? "open-meteo" : url.searchParams.get("source");
+    const source = isDirect
+      ? SOURCES.find(({ model }) => model && model === url.searchParams.get("models"))?.id ?? "open-meteo"
+      : url.searchParams.get("source");
     const latitude = Number(url.searchParams.get(isDirect ? "latitude" : "lat"));
     requests.push({ source, latitude });
     if (forecast && await forecast(route, source)) return;
@@ -85,6 +87,23 @@ async function mockDashboard(page, { forecast, cities } = {}) {
 async function initialForecast(page) {
   await expect(page.locator("#source-count")).toHaveText("3 reporting");
 }
+
+test("compares individual models in the Worker build and preserves model choices", async ({ page }) => {
+  const requests = await mockDashboard(page);
+  await initialForecast(page);
+  const models = SOURCES.filter(({ model }) => model);
+  for (const { name } of models) await page.getByRole("switch", { name: `Compare ${name}`, exact: true }).check();
+  await expect(page.locator("#source-count")).toHaveText("10 reporting");
+  await expect(page.locator("#legend li")).toHaveCount(10);
+  await expect(page.locator("#details tbody tr")).toHaveCount(10);
+  for (const { id } of models) {
+    expect(requests.some(({ source }) => source === id)).toBe(true);
+    await expect(page.locator(`#details tbody tr[data-source="${id}"]`)).toContainText("57°F");
+  }
+  await page.reload();
+  await expect(page.locator("#source-count")).toHaveText("10 reporting");
+  for (const { name } of models) await expect(page.getByRole("switch", { name: `Compare ${name}`, exact: true })).toBeChecked();
+});
 
 test("renders the current forecast, three sources, the largest gap and exact-hour details", async ({ page }) => {
   const errors = [];

@@ -6,6 +6,11 @@ const LINE_STYLES = {
   nws: { color: "#b55a13", dash: [2, 5] },
   gfs: { color: "#2366ad", dash: [9, 3, 2, 3] },
   icon: { color: "#a3336c", dash: [12, 4] },
+  ecmwf: { color: "#4c6b20", dash: [6, 3] },
+  gem: { color: "#b33838", dash: [3, 3] },
+  jma: { color: "#596779", dash: [14, 3, 3, 3] },
+  meteofrance: { color: "#087b9a", dash: [8, 3, 2, 3, 2, 3] },
+  ukmo: { color: "#865021", dash: [16, 5] },
 };
 
 function chartScale(metric, values) {
