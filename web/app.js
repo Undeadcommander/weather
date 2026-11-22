@@ -3,11 +3,14 @@ import { fetchOpenMeteo } from "../shared/open-meteo.js";
 import { fetchBrowserForecast, findBrowserLocations } from "../shared/browser-providers.js";
 import {
   METRICS, atHour, compareSources, conditionInfo, currentSummary, dateChoices, dateKey, detailLabel,
-  displayNumber, formatGap, formatValue, hourLabel, largestGap, locationLabel,
+  displayNumber, formatGap, formatValue, gapAtHour, hourLabel, locationLabel,
   hasSnow, normalizePreferences, snowForecast, timesForDay,
 } from "./model.js";
 import { createChart } from "./chart.js";
 import { createDatePicker } from "./calendar.js";
+import { initializeTheme } from "./theme.js";
+
+initializeTheme();
 
 const STORE_KEY = "skylens.preferences.v1";
 const STATIC_HOSTING = typeof __SKYLENS_STATIC__ !== "undefined" && __SKYLENS_STATIC__;
@@ -79,7 +82,15 @@ function isPending(active) {
 }
 
 const sourceCards = new Map();
-for (const source of SOURCES) {
+const sourcePriority = ["nws", "open-meteo", "met-norway", "ecmwf", "gfs", "ukmo"];
+const sourceRank = ({ id }) => {
+  const rank = sourcePriority.indexOf(id);
+  return rank < 0 ? sourcePriority.length : rank;
+};
+const listedSources = [...SOURCES].sort((a, b) => sourceRank(a) - sourceRank(b));
+const featuredSourceCount = 3;
+let sourcesExpanded = false;
+for (const source of listedSources) {
   const card = text("li", "", "source-card");
   card.dataset.source = source.id;
   const mark = text("span", "", "source-mark");
@@ -103,7 +114,7 @@ for (const source of SOURCES) {
   actions.append(favorite, toggle);
   card.append(mark, group, actions);
   $("source-list").append(card);
-  sourceCards.set(source.id, { status, favorite, switchInput });
+  sourceCards.set(source.id, { card, status, favorite, switchInput });
 
   switchInput.addEventListener("change", () => {
     preferences.enabled = switchInput.checked
@@ -123,8 +134,31 @@ for (const source of SOURCES) {
   });
 }
 
-function renderSources(active) {
-  const reportingCount = active.filter(({ id }) => reporting(id)).length;
+function renderSourceDisclosure() {
+  listedSources.forEach(({ id }, index) => {
+    sourceCards.get(id).card.hidden = !sourcesExpanded && index >= featuredSourceCount;
+  });
+  const toggle = $("toggle-sources");
+  toggle.hidden = listedSources.length <= featuredSourceCount;
+  toggle.setAttribute("aria-expanded", String(sourcesExpanded));
+  toggle.textContent = sourcesExpanded ? "Show fewer sources" : `Show all ${listedSources.length} sources`;
+}
+
+$("toggle-sources").addEventListener("click", () => {
+  sourcesExpanded = !sourcesExpanded;
+  renderSourceDisclosure();
+  const list = $("source-list");
+  if (sourcesExpanded) {
+    list.tabIndex = 0;
+    list.focus({ preventScroll: true });
+  } else {
+    list.scrollTop = 0;
+    list.removeAttribute("tabindex");
+  }
+});
+renderSourceDisclosure();
+
+function renderSources(active, availableSources, metric) {
   for (const { id } of SOURCES) {
     const { status, favorite, switchInput } = sourceCards.get(id);
     const enabled = preferences.enabled.includes(id);
@@ -141,8 +175,12 @@ function renderSources(active) {
     else if (!canReport(id) || result?.status === "unsupported") label = "Outside coverage";
     else if (state.pending.has(id)) label = result?.status === "ok" ? "Refreshing…" : "Loading…";
     else if (result?.status === "ok") {
-      marker = result.stale ? "stale" : "ok";
-      label = result.stale ? "Cached forecast" : "Forecast available";
+      if (availableSources.has(id)) {
+        marker = result.stale ? "stale" : "ok";
+        label = result.stale ? "Cached forecast" : "Forecast available";
+      } else {
+        label = `No ${METRICS[metric].label} data for this day`;
+      }
     } else if (result?.status === "unavailable") {
       marker = "unavailable";
       label = "Temporarily unavailable";
@@ -150,7 +188,7 @@ function renderSources(active) {
     status.dataset.status = marker;
     status.textContent = label;
   }
-  $("source-count").textContent = `${reportingCount} reporting`;
+  $("source-count").textContent = `${availableSources.size} reporting`;
   $("favorites-only").setAttribute("aria-pressed", String(preferences.favoritesOnly));
   $("refresh").setAttribute("aria-busy", String(isPending(active)));
   $("refresh").setAttribute("aria-disabled", String(isPending(active)));
@@ -234,10 +272,9 @@ function renderOutlook() {
   $("outlook").replaceChildren(table);
 }
 
-function renderAnalysis(active, gap) {
-  const { series, metric, unit, timezone, isOutlook } = view;
-  const hasValues = values => values.some(value => value !== null);
-  const hasData = series.some(({ values }) => hasValues(values));
+function renderAnalysis(active) {
+  const { series, availableSources, metric, unit, isOutlook } = view;
+  const hasData = availableSources.size > 0;
   const hasChart = hasData && !isOutlook;
   $("plot").hidden = !hasChart;
   $("outlook").hidden = !isOutlook || !hasData;
@@ -254,28 +291,34 @@ function renderAnalysis(active, gap) {
   $("legend").hidden = isOutlook;
   $("difference").hidden = isOutlook;
   if (isOutlook) return;
-  $("legend").replaceChildren(...series.map(({ id, name, values }) => {
+  $("legend").replaceChildren(...series.map(({ id, name }) => {
     const item = document.createElement("li");
     item.dataset.source = id;
-    const hasValues = values.some(Number.isFinite);
+    const hasValues = availableSources.has(id);
     item.toggleAttribute("data-missing", !hasValues);
     item.append(swatch(), text("span", hasValues ? name : `${name} · No data`));
     return item;
   }));
+  renderGap();
+}
 
+function renderGap(hoveredTime = null) {
+  if (!view || view.isOutlook) return;
+  const { active, times, series, metric, unit, timezone } = view;
+  const time = hoveredTime ?? state.time;
+  const hour = time === null ? null : hourLabel(time, timezone);
+  const gap = gapAtHour(times, series, time);
   $("gap-value").textContent = gap ? formatGap(gap.spread, metric, unit) : "—";
-  $("inspect-gap").hidden = !gap || gap.spread === 0;
   if (gap?.spread > 0) {
-    const hour = hourLabel(gap.time, timezone);
     const label = METRICS[metric].gapLabel;
     const range = [gap.min, gap.max].map((n) => formatValue(n, metric, unit)).join(" to ");
     $("gap-note").textContent = `At ${hour}, ${label} range from ${range}.`;
-    $("inspect-gap").textContent = `Inspect ${hour}`;
   } else if (gap) {
-    $("gap-note").textContent = "Sources agree at the displayed precision for the hours they share.";
+    $("gap-note").textContent = `At ${hour}, sources agree at the displayed precision.`;
   } else {
-    $("gap-note").textContent = isPending(active) ? "Waiting for comparable hours." :
-      `Compare at least two sources with ${METRICS[metric].label} data at the same hour.`;
+    const when = hour ? `for ${hour}` : "at the same hour";
+    $("gap-note").textContent = isPending(active) ? `Waiting for comparable forecasts ${when}.` :
+      `Compare at least two sources with ${METRICS[metric].label} data ${when}.`;
   }
 }
 
@@ -342,7 +385,7 @@ function renderDetails() {
   }));
 }
 
-const chart = createChart($("plot"), $("chart-tooltip"), selectTime);
+const chart = createChart($("plot"), $("chart-tooltip"), selectTime, renderGap);
 $("outlook").addEventListener("click", event => {
   const button = event.target.closest("button[data-time]");
   if (button) selectTime(Number(button.dataset.time));
@@ -352,6 +395,7 @@ function selectTime(time, keyboard = false) {
   if (typeof time !== "number" || !view.times.includes(time)) return;
   state.time = time;
   chart.update(view, state.time);
+  renderGap();
   renderDetails();
   if (keyboard) announce(`Forecast details for ${detailLabel(time, view.timezone)}.`);
 }
@@ -393,14 +437,15 @@ function render() {
       return displayNumber(row?.[metric], metric, unit);
     }),
   }));
-  if (!detailTimes.includes(state.time)) state.time = firstPopulated ?? null;
-  view = { active, times, detailTimes, series, metric, unit, timezone, isOutlook, gap: isOutlook ? null : largestGap(times, series) };
+  const availableSources = new Set(series.filter(({ values }) => values.some(value => value !== null)).map(({ id }) => id));
+  if (!detailTimes.includes(state.time)) state.time = detailTimes.includes(current) ? current : firstPopulated ?? null;
+  view = { active, times, detailTimes, series, availableSources, metric, unit, timezone, isOutlook };
 
-  renderSources(active);
+  renderSources(active, availableSources, metric);
   renderHero(active, atHour(now), timezone);
   renderDates(choices, available, state.day);
   renderOptions();
-  renderAnalysis(active, view.gap);
+  renderAnalysis(active);
   chart.update(view, state.time);
   renderDetails();
 }
@@ -436,8 +481,7 @@ async function fetchForecast(source, location, controller) {
 
   const active = inComparison();
   if (!isPending(active)) {
-    const count = active.filter(({ id }) => reporting(id)).length;
-    announce(`${count} of ${active.length} sources reporting for ${preferences.location.name}.`);
+    announce(`${view.availableSources.size} of ${active.length} sources reporting for the selected forecast in ${preferences.location.name}.`);
   }
 }
 
@@ -491,11 +535,6 @@ document.querySelector(".units").addEventListener("click", (event) => {
   render();
 });
 $("hours").addEventListener("change", () => selectTime(Number($("hours").value)));
-$("inspect-gap").addEventListener("click", () => {
-  if (!view.gap) return;
-  selectTime(view.gap.time);
-  $("hours").focus();
-});
 
 function setupSearch() {
   const form = $("location-form");

@@ -6,6 +6,7 @@ import { build } from "esbuild";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const staticBuild = process.argv.includes("--pages");
 const files = [
+  ["/theme-init.js", "web/theme-init.js", "text/javascript; charset=utf-8", true],
   ["/app.js", "web/app.js", "text/javascript; charset=utf-8", true],
   ["/styles.css", "web/styles.css", "text/css; charset=utf-8", true],
   ["/assets/icon.svg", "assets/icon.svg", "image/svg+xml"],
@@ -29,7 +30,7 @@ const assets = await Promise.all(files.map(async ([route, file, type, bundle]) =
 
 let markup = await readFile(new URL("../web/index.html", import.meta.url), "utf8");
 for (const [route, { etag }] of assets) {
-  if (route === "/app.js" || route === "/styles.css") {
+  if (route === "/app.js" || route === "/styles.css" || route === "/theme-init.js") {
     markup = markup.replace(`"${route}"`, `"${route}?v=${etag.slice(1, -1)}"`);
   }
 }

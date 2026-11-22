@@ -78,6 +78,7 @@ async function openPages(page, { failMet = false, badNws = false } = {}) {
 test("Pages can compare all individual models through their reported forecast ranges", async ({ page }) => {
   const { requests, errors } = await openPages(page);
   const models = SOURCES.filter(({ model }) => model);
+  await page.getByRole("button", { name: "Show all 10 sources" }).click();
   for (const { name } of models) await page.getByRole("switch", { name: `Compare ${name}` }).check();
   await expect(page.locator("#source-count")).toHaveText("10 reporting");
   await expect(page.locator("#legend li")).toHaveCount(10);
@@ -100,6 +101,7 @@ test("Pages can compare all individual models through their reported forecast ra
   await expect(page.locator("#source-count")).toHaveText("1 reporting");
   await page.reload();
   await expect(page.locator("#source-count")).toHaveText("1 reporting");
+  await page.getByRole("button", { name: "Show all 10 sources" }).click();
   await expect(page.getByRole("switch", { name: "Compare ECMWF IFS", exact: true })).toBeChecked();
   await expect(page.getByRole("button", { name: "Favorite ECMWF IFS", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect(errors).toEqual([]);

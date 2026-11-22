@@ -1,16 +1,16 @@
 import { formatValue, hourLabel } from "./model.js";
 
 const LINE_STYLES = {
-  "open-meteo": { color: "#6748d4", dash: [] },
-  "met-norway": { color: "#0c8076", dash: [7, 4] },
-  nws: { color: "#b55a13", dash: [2, 5] },
-  gfs: { color: "#2366ad", dash: [9, 3, 2, 3] },
-  icon: { color: "#a3336c", dash: [12, 4] },
-  ecmwf: { color: "#4c6b20", dash: [6, 3] },
-  gem: { color: "#b33838", dash: [3, 3] },
-  jma: { color: "#596779", dash: [14, 3, 3, 3] },
-  meteofrance: { color: "#087b9a", dash: [8, 3, 2, 3, 2, 3] },
-  ukmo: { color: "#865021", dash: [16, 5] },
+  "open-meteo": { color: "--purple", dash: [] },
+  "met-norway": { color: "--teal", dash: [7, 4] },
+  nws: { color: "--amber", dash: [2, 5] },
+  gfs: { color: "--gfs", dash: [9, 3, 2, 3] },
+  icon: { color: "--icon", dash: [12, 4] },
+  ecmwf: { color: "--ecmwf", dash: [6, 3] },
+  gem: { color: "--gem", dash: [3, 3] },
+  jma: { color: "--jma", dash: [14, 3, 3, 3] },
+  meteofrance: { color: "--meteofrance", dash: [8, 3, 2, 3, 2, 3] },
+  ukmo: { color: "--ukmo", dash: [16, 5] },
 };
 
 function chartScale(metric, values) {
@@ -26,7 +26,7 @@ function chartScale(metric, values) {
   return { min: Math.floor(bottom / step) * step, max: Math.ceil(top / step) * step, step };
 }
 
-export function createChart(plot, tooltip, onSelect) {
+export function createChart(plot, tooltip, onSelect, onHover) {
   const canvas = plot.querySelector("canvas");
   const context = canvas.getContext("2d");
   let model;
@@ -37,6 +37,8 @@ export function createChart(plot, tooltip, onSelect) {
   function redraw() {
     if (!model || plot.hidden) return;
     const { times, series, metric, timezone } = model;
+    const styles = getComputedStyle(document.documentElement);
+    const colorFor = name => styles.getPropertyValue(name).trim();
     const width = plot.clientWidth;
     const height = plot.clientHeight;
     const usable = series.flatMap(({ values }) => values.filter(Number.isFinite));
@@ -63,13 +65,13 @@ export function createChart(plot, tooltip, onSelect) {
 
     for (let value = min; value <= max; value += step) {
       const py = y(value);
-      context.strokeStyle = "#e9e5f0";
+      context.strokeStyle = colorFor("--line");
       context.lineWidth = 1;
       context.beginPath();
       context.moveTo(left, py);
       context.lineTo(right, py);
       context.stroke();
-      context.fillStyle = "#625d72";
+      context.fillStyle = colorFor("--muted");
       context.textAlign = "right";
       const suffix = { temp: "°", rain: "%", wind: "" }[metric];
       context.fillText(`${value}${suffix}`, left - 8, py);
@@ -86,14 +88,14 @@ export function createChart(plot, tooltip, onSelect) {
 
     const target = hovered ?? selected;
     if (target >= 0 && target < times.length) {
-      context.fillStyle = "#eee9fa";
+      context.fillStyle = colorFor("--chart-selection");
       context.fillRect(x(target) - 1, top, 2, bottom - top);
     }
 
     for (const { id, values } of series) {
       const { color, dash } = LINE_STYLES[id];
-      context.strokeStyle = color;
-      context.fillStyle = color;
+      context.strokeStyle = colorFor(color);
+      context.fillStyle = colorFor(color);
       context.lineWidth = 2.6;
       context.lineCap = "round";
       context.lineJoin = "round";
@@ -115,7 +117,7 @@ export function createChart(plot, tooltip, onSelect) {
         context.arc(x(index), y(value), isTarget ? 4.6 : 3, 0, 2 * Math.PI);
         context.fill();
         if (isTarget) {
-          context.strokeStyle = "#fff";
+          context.strokeStyle = colorFor("--surface");
           context.lineWidth = 1.5;
           context.stroke();
         }
@@ -161,6 +163,7 @@ export function createChart(plot, tooltip, onSelect) {
     hovered = null;
     tooltip.hidden = true;
     redraw();
+    onHover(null);
   }
 
   canvas.addEventListener("pointermove", (event) => {
@@ -170,6 +173,7 @@ export function createChart(plot, tooltip, onSelect) {
     hovered = index;
     redraw();
     showTooltip(index);
+    onHover(model.times[index]);
   });
   canvas.addEventListener("pointerleave", hideTooltip);
   canvas.addEventListener("click", (event) => {
@@ -187,11 +191,13 @@ export function createChart(plot, tooltip, onSelect) {
     const next = { ArrowLeft: Math.max(0, selected - 1), ArrowRight: Math.min(last, selected + 1), Home: 0, End: last }[key];
     if (next === undefined) return;
     event.preventDefault();
+    hovered = null;
     onSelect(model.times[next], true);
     showTooltip(next);
   });
   plot.addEventListener("blur", hideTooltip);
 
+  document.addEventListener("themechange", redraw);
   new ResizeObserver(redraw).observe(plot);
   document.fonts?.ready.then(redraw);
   return {

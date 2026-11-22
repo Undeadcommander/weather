@@ -3,6 +3,12 @@ import { HOUR } from "./weather.js";
 
 export const OPEN_METEO_ORIGIN = "https://api.open-meteo.com";
 
+function rateLimitDelay(retryAfter) {
+  if (!retryAfter) return 750 + Math.random() * 500;
+  const seconds = Number(retryAfter);
+  return Math.max(0, Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now());
+}
+
 function wmoCondition(code) {
   if (code === 0) return "clear";
   if (code === 1 || code === 2) return "partlyCloudy";
@@ -38,13 +44,25 @@ export async function fetchOpenMeteo({ latitude, longitude }, signal, source = {
     temperature_unit: "celsius", wind_speed_unit: "kmh",
     hourly: "temperature_2m,precipitation_probability,snowfall,wind_speed_10m,relative_humidity_2m,weather_code,is_day",
   });
-  const timeout = AbortSignal.timeout(4500);
-  const response = await fetch(url, {
-    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    credentials: "omit",
-    referrerPolicy: "no-referrer",
-    redirect: "manual",
-  });
+  function request() {
+    const timeout = AbortSignal.timeout(4500);
+    return fetch(url, {
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      redirect: "manual",
+    });
+  }
+  let response = await request();
+  if (response.status === 429) {
+    const delay = rateLimitDelay(response.headers.get("Retry-After"));
+    if (delay <= 2000) {
+      await response.body?.cancel();
+      await new Promise(resolve => setTimeout(resolve, delay));
+      signal?.throwIfAborted();
+      response = await request();
+    }
+  }
   if (!response.ok) {
     await response.body?.cancel();
     throw new Error("Open-Meteo forecast unavailable");

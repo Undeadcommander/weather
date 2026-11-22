@@ -105,18 +105,13 @@ export function formatGap(value, metric, unit) {
   return metric === "rain" ? `${value} pp` : formatValue(value, metric, unit);
 }
 
-export function largestGap(times, series) {
-  let largest = null;
-  for (const [index, time] of times.entries()) {
-    const comparable = series.filter(({ values }) => Number.isFinite(values[index]));
-    if (comparable.length < 2) continue;
-    const values = comparable.map(({ values }) => values[index]);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const spread = max - min;
-    if (!largest || spread > largest.spread) largest = { index, time, min, max, spread };
-  }
-  return largest;
+export function gapAtHour(times, series, time) {
+  const index = times.indexOf(time);
+  const values = series.map(({ values }) => values[index]).filter(Number.isFinite);
+  if (values.length < 2) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  return { min, max, spread: max - min };
 }
 
 function median(values) {

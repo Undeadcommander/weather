@@ -3,7 +3,7 @@ import test from "node:test";
 import { DEFAULT_LOCATION, HOUR } from "../shared/weather.js";
 import {
   compareSources, conditionInfo, currentSummary, dateChoices, dateKey, detailLabel,
-  displayNumber, formatGap, formatValue, hourLabel, largestGap, locationLabel,
+  displayNumber, formatGap, formatValue, gapAtHour, hourLabel, locationLabel,
   normalizePreferences, timesForDay,
 } from "../web/model.js";
 
@@ -52,12 +52,14 @@ test("unit conversions and comparison labels match displayed precision", () => {
   assert.equal(formatGap(10, "wind", "C"), "10 km/h");
 });
 
-test("difference highlights compare only matching forecast hours with two or more values", () => {
+test("forecast differences use only the requested hour and require two values", () => {
   const times = [0, HOUR, HOUR * 2, HOUR * 3];
   const series = [{ values: [10, null, 20, 10] }, { values: [8, 99, 14, 10] }, { values: [null, null, 16, 10] }];
-  assert.deepEqual(largestGap(times, series), { index: 2, time: HOUR * 2, min: 14, max: 20, spread: 6 });
-  assert.equal(largestGap(times, series.slice(0, 1)), null);
-  assert.equal(largestGap([0], [{ values: [7] }, { values: [7] }]).spread, 0);
+  assert.deepEqual(gapAtHour(times, series, 0), { min: 8, max: 10, spread: 2 });
+  assert.equal(gapAtHour(times, series, HOUR), null);
+  assert.equal(gapAtHour(times, series, 2 * HOUR).spread, 6);
+  assert.equal(gapAtHour(times, series, 3 * HOUR).spread, 0);
+  assert.equal(gapAtHour(times, series, 4 * HOUR), null);
 });
 
 test("current summary uses medians and identifies mixed conditions and night icons", () => {
