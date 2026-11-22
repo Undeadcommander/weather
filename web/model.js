@@ -5,6 +5,8 @@ export const METRICS = {
   rain: { label: "rain chance", gapLabel: "rain chances", F: "%", C: "%" },
   wind: { label: "wind", gapLabel: "wind speeds", F: "mph", C: "km/h" },
   humidity: { label: "humidity", F: "%", C: "%" },
+  conditions: { label: "condition" },
+  snow: { label: "snow" },
 };
 
 const formatters = new Map();
@@ -127,7 +129,22 @@ function median(values) {
 export function conditionInfo(row) {
   if (!row || !Object.hasOwn(CONDITIONS, row.condition)) return null;
   const info = CONDITIONS[row.condition];
-  return row.condition === "clear" && row.night ? { ...info, icon: "moon" } : info;
+  if (row.condition !== "clear") return info;
+  return row.night ? { ...info, icon: "moon" } : { ...info, label: "Sunny" };
+}
+
+export function hasSnow(row) {
+  return row?.snowfall > 0 || row?.snowMentioned === true || row?.condition === "snow";
+}
+
+export function snowForecast(row, unit) {
+  if (Number.isFinite(row?.snowfall) && (row.snowfall > 0 || !hasSnow(row))) {
+    const amount = unit === "F" ? row.snowfall / 2.54 : row.snowfall;
+    const rounded = Number(amount.toFixed(2));
+    return `${amount > 0 && !rounded ? "<0.01" : rounded} ${unit === "F" ? "in" : "cm"}`;
+  }
+  if (hasSnow(row)) return "Snow possible";
+  return conditionInfo(row) ? "No snow indicated" : null;
 }
 
 export function currentSummary(rows) {

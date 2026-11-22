@@ -16,7 +16,7 @@
     <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.2"/><path d="m15.2 15.2 4.1 4.1"/></symbol>
     <symbol id="icon-pin" viewBox="0 0 24 24"><path d="M19 10c0 4.7-7 10-7 10S5 14.7 5 10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2.2"/></symbol>
     <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M5.3 9a7.3 7.3 0 0 1 12-2.4L20 11M4 13l2.7 4.4a7.3 7.3 0 0 0 12-2.4"/></symbol>
-    <symbol id="icon-calendar" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.2"/><path d="M8 3.5v4m8-4v4M4 10h16"/></symbol>
+    <symbol id="icon-calendar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="17" rx="3"/><path d="M7.5 2.5v4m9-4v4M3 9.5h18m-13.5 4h2m-2 4h2m3.5-2 1.5 1.5 3-3.5"/></symbol>
     <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.5 1.5m11.2 11.2 1.5 1.5m0-14.2-1.5 1.5M6.4 17.6l-1.5 1.5"/></symbol>
     <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20.5 15A8.7 8.7 0 0 1 9 3.5 8.8 8.8 0 1 0 20.5 15Z"/></symbol>
     <symbol id="icon-cloud" viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.8-7.9 5.7 5.7 0 0 1 10.9 1.1A3.4 3.4 0 1 1 18 18Z"/></symbol>
@@ -88,23 +88,30 @@
 
     <div class="dashboard-grid">
       <section id="comparison" class="panel comparison" aria-labelledby="comparison-heading">
-        <div class="panel-heading comparison-heading">
+        <div class="panel-heading">
           <div>
             <h2 id="comparison-heading">Forecast comparison</h2>
             <p id="comparison-description">Hourly forecasts in local time</p>
           </div>
-          <div class="segmented metric-picker" role="group" aria-label="Comparison metric">
-            <button type="button" data-metric="temp" aria-pressed="true">Temperature</button>
-            <button type="button" data-metric="rain" aria-pressed="false">Rain</button>
-            <button type="button" data-metric="wind" aria-pressed="false">Wind</button>
-          </div>
         </div>
-        <div class="date-row">
-          <svg class="icon date-icon" aria-hidden="true"><use href="#icon-calendar"/></svg>
+        <div class="segmented metric-picker" role="group" aria-label="Comparison metric">
+          <button type="button" data-metric="temp" aria-pressed="true">Temperature</button>
+          <button type="button" data-metric="rain" aria-pressed="false">Rain</button>
+          <button type="button" data-metric="wind" aria-pressed="false">Wind</button>
+          <button type="button" data-metric="conditions" aria-pressed="false">Conditions</button>
+          <button type="button" id="snow-tab" data-metric="snow" aria-pressed="false" hidden>Snow</button>
+        </div>
+        <div class="date-row" id="date-row">
           <div id="dates" class="date-picker" role="group" aria-label="Forecast day"></div>
-          <span id="chart-unit" class="chart-unit"></span>
+          <button id="calendar-trigger" type="button" aria-label="Choose forecast date" aria-expanded="false"
+            aria-controls="forecast-calendar" class="calendar-trigger" title="Choose forecast date">
+            <svg class="icon" aria-hidden="true"><use href="#icon-calendar"/></svg><span id="calendar-selection"></span>
+          </button>
+          <div id="forecast-calendar" class="forecast-calendar" role="group" aria-label="Available forecast dates" hidden></div>
         </div>
+        <span id="chart-unit" class="chart-unit"></span>
         <div class="plot-wrap">
+          <div id="outlook" class="outlook" hidden></div>
           <div id="plot" class="plot" tabindex="0" role="group" aria-label="Hourly forecast chart"
             aria-describedby="chart-help">
             <canvas id="chart" aria-hidden="true"></canvas>
@@ -135,7 +142,7 @@
           </button>
         </section>
 
-        <section class="insight" aria-labelledby="insight-heading">
+        <section id="difference" class="insight" aria-labelledby="insight-heading">
           <div class="insight-heading">
             <span class="insight-icon"><svg class="icon" aria-hidden="true"><use href="#icon-compare"/></svg></span>
             <h2 id="insight-heading">Largest difference</h2>

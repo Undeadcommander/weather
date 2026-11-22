@@ -39,6 +39,8 @@ export function reading(t, values) {
     t,
     temp: bounded(values.temp, -100, 65),
     rain: bounded(values.rain, 0, 100),
+    snowfall: bounded(values.snowfall, 0, 500),
+    snowMentioned: values.snowMentioned === true || values.condition === "snow",
     wind: bounded(values.wind, 0, 500),
     humidity: bounded(values.humidity, 0, 100),
     condition: values.condition,
@@ -52,7 +54,8 @@ export function validRows(rows, now) {
   const distinct = new Map();
   for (const row of rows) {
     if (!Number.isFinite(row.t) || row.t % HOUR || row.t < start || row.t > end) continue;
-    if (row.temp === null && row.rain === null && row.wind === null && row.humidity === null) continue;
+    if ([row.temp, row.rain, row.wind, row.humidity, row.snowfall].every(value => value == null) &&
+        !row.condition && !row.snowMentioned) continue;
     distinct.set(row.t, row);
   }
   return [...distinct.values()].sort((a, b) => a.t - b.t);

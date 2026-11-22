@@ -127,10 +127,65 @@ test("switches rain, wind, and temperature and handles missing rain probability"
   await expect(page.locator("#hero-temperature")).toHaveText("12°C");
   await expect(page.locator("#gap-value")).toHaveText("27 km/h");
   await page.getByRole("button", { name: "Temperature", exact: true }).click();
+  await expect(page.locator("#chart-unit")).toHaveText("temperature (°C)");
   await expect(page.locator("#gap-value")).toHaveText("8°C");
   await page.reload();
   await initialForecast(page);
   await expect(page.getByRole("button", { name: /Celsius and kilometers/ })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("shows hourly conditions and opens Snow only for a selected source and date with snow", async ({ page }) => {
+  await mockDashboard(page, { forecast: async (route, source) => {
+    if (source !== "open-meteo") return false;
+    const data = openMeteoFixture(fixture(source));
+    data.hourly.weather_code[0] = 0;
+    data.hourly.snowfall = Array(data.hourly.time.length).fill(0);
+    data.hourly.snowfall[17] = 2.54;
+    await route.fulfill({ json: data });
+    return true;
+  } });
+  await initialForecast(page);
+  const snow = page.getByRole("button", { name: "Snow", exact: true });
+  await expect(snow).toBeHidden();
+  await page.getByRole("button", { name: "Conditions", exact: true }).click();
+  const outlook = page.locator("#outlook");
+  const first = outlook.locator("tbody tr").first();
+  await expect(first.locator("td")).toHaveText(["Sunny", "Cloudy", "Partly cloudy"]);
+  await outlook.getByRole("button", { name: "10 AM PST" }).click();
+  await expect(page.locator("#detail-time")).toContainText("10 AM PST");
+  await page.getByRole("button", { name: "Tomorrow" }).click();
+  await snow.click();
+  await expect(outlook.getByRole("row", { name: /1 AM PST/ }).first()).toContainText("1 in");
+  await page.getByRole("button", { name: /Celsius and kilometers/ }).click();
+  await expect(outlook).toContainText("2.54 cm");
+  await page.getByRole("switch", { name: "Compare Open-Meteo" }).uncheck();
+  await expect(snow).toBeHidden();
+  await expect(page.locator("#plot")).toBeVisible();
+});
+
+test("calendar offers only reported dates across months and keeps the selected day visible", async ({ page }) => {
+  await mockDashboard(page, { forecast: async (route, source) => {
+    if (source !== "met-norway") return false;
+    const data = fixture(source);
+    data.rows.push({ ...data.rows[0], t: START + 10 * 24 * HOUR });
+    await route.fulfill({ json: data });
+    return true;
+  } });
+  await initialForecast(page);
+  await expect(page.locator("#dates button")).toHaveText(["Today", "Tomorrow"]);
+  const trigger = page.getByRole("button", { name: /Choose forecast date/ });
+  await trigger.click();
+  const calendar = page.getByRole("group", { name: "Available forecast dates" });
+  await expect(calendar.getByRole("button")).toHaveCount(5);
+  await expect(calendar.getByRole("button", { name: "Sunday, November 22, 2026" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+  await expect(calendar).toBeHidden();
+  await trigger.click();
+  await calendar.getByRole("button", { name: "Wednesday, December 2, 2026" }).click();
+  await expect(calendar).toBeHidden();
+  await expect(trigger).toContainText("Dec 2");
+  await expect(page.locator("#detail-time")).toContainText("Wed, Dec 2");
 });
 
 test("changes dates and selects hours with the chart, keyboard, and dropdown", async ({ page }) => {
@@ -153,7 +208,8 @@ test("changes dates and selects hours with the chart, keyboard, and dropdown", a
   await plot.locator("canvas").click({ position: { x: 42, y: 90 } });
   await expect(page.locator("#detail-time")).toContainText("12 AM PST");
 
-  await page.locator("[data-day='2']").click();
+  await page.getByRole("button", { name: "Choose forecast date" }).click();
+  await page.getByRole("button", { name: "Tuesday, November 24, 2026" }).click();
   await expect(page.locator("#detail-time")).toContainText("Tue, Nov 24");
   await page.getByRole("combobox", { name: "Forecast hour" }).selectOption({ label: "5 AM PST" });
   await expect(page.locator("#detail-time")).toContainText("5 AM PST");

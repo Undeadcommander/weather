@@ -2,11 +2,12 @@ import { SOURCES } from "../shared/weather.js";
 import { fetchOpenMeteo } from "../shared/open-meteo.js";
 import { fetchBrowserForecast, findBrowserLocations } from "../shared/browser-providers.js";
 import {
-  METRICS, atHour, compareSources, conditionInfo, currentSummary, dateChoices, detailLabel,
+  METRICS, atHour, compareSources, conditionInfo, currentSummary, dateChoices, dateKey, detailLabel,
   displayNumber, formatGap, formatValue, hourLabel, largestGap, locationLabel,
-  normalizePreferences, timesForDay,
+  hasSnow, normalizePreferences, snowForecast, timesForDay,
 } from "./model.js";
 import { createChart } from "./chart.js";
+import { createDatePicker } from "./calendar.js";
 
 const STORE_KEY = "skylens.preferences.v1";
 const STATIC_HOSTING = typeof __SKYLENS_STATIC__ !== "undefined" && __SKYLENS_STATIC__;
@@ -23,9 +24,8 @@ function readPreferences() {
 }
 
 const preferences = readPreferences();
-const state = { day: 0, metric: "temp", time: null, results: new Map(), pending: new Map() };
+const state = { day: null, metric: "temp", time: null, results: new Map(), pending: new Map() };
 let view;
-let dateSignature = "";
 let hourSignature = "";
 
 function persist() {
@@ -172,18 +172,13 @@ function renderHero(active, current, timezone) {
   }
 }
 
-function renderDates(choices) {
-  const signature = choices.map(({ key }) => key).join(",");
-  if (dateSignature !== signature) {
-    dateSignature = signature;
-    $("dates").replaceChildren(...choices.map(({ label }, index) => {
-      const button = text("button", label);
-      button.type = "button";
-      button.dataset.day = index;
-      return button;
-    }));
-  }
-  for (const button of $("dates").children) button.setAttribute("aria-pressed", String(Number(button.dataset.day) === state.day));
+const renderDates = createDatePicker($("date-row"), day => {
+  state.day = day;
+  state.time = null;
+  render();
+});
+
+function renderOptions() {
   for (const button of document.querySelectorAll("[data-metric]")) {
     button.setAttribute("aria-pressed", String(button.dataset.metric === state.metric));
   }
@@ -205,18 +200,60 @@ function emptyMessage(active, series) {
   return ["Forecasts unavailable", "Try refreshing or choose a source that covers this location."];
 }
 
+function renderOutlook() {
+  const { times, series, metric, timezone } = view;
+  const table = document.createElement("table");
+  table.append(text("caption", metric === "snow" ? "Hourly snow forecast" : "Hourly conditions", "sr-only"));
+  const header = table.createTHead().insertRow();
+  for (const label of ["Local time", ...series.map(source => source.name)]) {
+    const cell = text("th", label);
+    cell.scope = "col";
+    header.append(cell);
+  }
+  const body = table.createTBody();
+  times.forEach((time, index) => {
+    const row = body.insertRow();
+    const hour = text("th", "");
+    hour.scope = "row";
+    const button = text("button", hourLabel(time, timezone, true));
+    button.type = "button";
+    button.dataset.time = time;
+    hour.append(button);
+    row.append(hour);
+    for (const { values } of series) {
+      const cell = row.insertCell();
+      const info = values[index];
+      if (info) {
+        const content = text("span", "", "table-condition");
+        if (info.icon) content.append(icon(info.icon));
+        content.append(info.label);
+        cell.append(content);
+      } else cell.textContent = "—";
+    }
+  });
+  $("outlook").replaceChildren(table);
+}
+
 function renderAnalysis(active, gap) {
-  const { times, series, metric, unit, timezone } = view;
-  const hasChart = times.length > 0 && series.some(({ values }) => values.some(Number.isFinite));
+  const { series, metric, unit, timezone, isOutlook } = view;
+  const hasValues = values => values.some(value => value !== null);
+  const hasData = series.some(({ values }) => hasValues(values));
+  const hasChart = hasData && !isOutlook;
   $("plot").hidden = !hasChart;
-  $("plot-empty").hidden = hasChart;
-  $("chart-unit").textContent = METRICS[metric][unit];
-  if (!hasChart) {
+  $("outlook").hidden = !isOutlook || !hasData;
+  if (!$("outlook").hidden) renderOutlook();
+  $("plot-empty").hidden = hasData;
+  $("chart-unit").hidden = !hasChart;
+  $("chart-unit").textContent = hasChart ? `${METRICS[metric].label} (${METRICS[metric][unit]})` : "";
+  if (!hasData) {
     const [title, note] = emptyMessage(active, series);
     $("empty-title").textContent = title;
     $("empty-note").textContent = note;
   }
 
+  $("legend").hidden = isOutlook;
+  $("difference").hidden = isOutlook;
+  if (isOutlook) return;
   $("legend").replaceChildren(...series.map(({ id, name, values }) => {
     const item = document.createElement("li");
     item.dataset.source = id;
@@ -245,6 +282,11 @@ function renderAnalysis(active, gap) {
 function renderDetails() {
   const { active, detailTimes, metric, unit, timezone } = view;
   const selected = state.time;
+  if (view.isOutlook) {
+    for (const button of $("outlook").querySelectorAll("button[data-time]")) {
+      button.setAttribute("aria-pressed", String(Number(button.dataset.time) === selected));
+    }
+  }
   const signature = `${timezone}:${detailTimes.join(",")}`;
   if (signature !== hourSignature) {
     $("hours").replaceChildren(...detailTimes.map((time) => {
@@ -301,6 +343,10 @@ function renderDetails() {
 }
 
 const chart = createChart($("plot"), $("chart-tooltip"), selectTime);
+$("outlook").addEventListener("click", event => {
+  const button = event.target.closest("button[data-time]");
+  if (button) selectTime(Number(button.dataset.time));
+});
 
 function selectTime(time, keyboard = false) {
   if (typeof time !== "number" || !view.times.includes(time)) return;
@@ -314,24 +360,46 @@ function render() {
   const now = Date.now();
   const { timezone } = preferences.location;
   const active = inComparison();
-  const end = Math.max(atHour(now), ...active.map(({ id }) => state.results.get(id)?.rows?.at(-1)?.t ?? 0));
+  const reportingSources = active.filter(({ id }) => reporting(id));
+  const current = atHour(now);
+  const available = new Set();
+  let end = current;
+  for (const { id } of reportingSources) {
+    for (const { t } of state.results.get(id).rows) {
+      if (t < current) continue;
+      available.add(dateKey(t, timezone));
+      end = Math.max(end, t);
+    }
+  }
   const choices = dateChoices(now, timezone, end);
-  state.day = Math.min(state.day, choices.length - 1);
-  const times = timesForDay(now, choices[state.day].key, timezone, end);
+  if (!available.has(state.day)) state.day = choices.find(({ key }) => available.has(key))?.key ?? choices[0].key;
+  const times = timesForDay(now, state.day, timezone, end);
+  const snowDay = reportingSources.some(({ id }) => times.some(time => hasSnow(state.results.get(id).byTime.get(time))));
+  $("snow-tab").hidden = !snowDay;
+  if (!snowDay && state.metric === "snow") state.metric = "temp";
   const { metric } = state;
   const { unit } = preferences;
-  const reportingSources = active.filter(({ id }) => reporting(id));
+  const isOutlook = metric === "conditions" || metric === "snow";
   const firstPopulated = times.find((time) => reportingSources.some(({ id }) => state.results.get(id).byTime.has(time)));
   const detailTimes = firstPopulated === undefined ? [] : times;
   const series = reportingSources.map(({ id, name }) => ({
-    id, name, values: times.map((time) => displayNumber(state.results.get(id).byTime.get(time)?.[metric], metric, unit)),
+    id, name, values: times.map(time => {
+      const row = state.results.get(id).byTime.get(time);
+      if (metric === "conditions") return conditionInfo(row);
+      if (metric === "snow") {
+        const label = snowForecast(row, unit);
+        return label ? { label, icon: hasSnow(row) ? "snow" : null } : null;
+      }
+      return displayNumber(row?.[metric], metric, unit);
+    }),
   }));
   if (!detailTimes.includes(state.time)) state.time = firstPopulated ?? null;
-  view = { active, times, detailTimes, series, metric, unit, timezone, gap: largestGap(times, series) };
+  view = { active, times, detailTimes, series, metric, unit, timezone, isOutlook, gap: isOutlook ? null : largestGap(times, series) };
 
   renderSources(active);
   renderHero(active, atHour(now), timezone);
-  renderDates(choices);
+  renderDates(choices, available, state.day);
+  renderOptions();
   renderAnalysis(active, view.gap);
   chart.update(view, state.time);
   renderDetails();
@@ -395,7 +463,7 @@ function chooseLocation(location) {
   state.pending.clear();
   state.results.clear();
   preferences.location = location;
-  state.day = 0;
+  state.day = null;
   state.time = null;
   persist();
   loadForecasts();
@@ -408,13 +476,6 @@ $("favorites-only").addEventListener("click", () => {
 });
 $("refresh").addEventListener("click", () => {
   if (!isPending(inComparison())) loadForecasts(true);
-});
-$("dates").addEventListener("click", (event) => {
-  const day = event.target.closest("button[data-day]");
-  if (!day) return;
-  state.day = Number(day.dataset.day);
-  state.time = null;
-  render();
 });
 document.querySelector(".metric-picker").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-metric]");

@@ -18,10 +18,11 @@ function wmoCondition(code) {
 export function normalizeOpenMeteo(data) {
   const hourly = data?.hourly;
   if (!Array.isArray(hourly?.time)) return [];
-  // Open-Meteo reports rain probability for the hour ending at each timestamp.
+  // Precipitation probability and snowfall cover the hour ending at each timestamp.
   return hourly.time.map((time, i) => reading(Number.isInteger(time) ? time * 1000 : NaN, {
     temp: hourly.temperature_2m?.[i],
     rain: hourly.time[i + 1] === time + HOUR / 1000 ? hourly.precipitation_probability?.[i + 1] : null,
+    snowfall: hourly.time[i + 1] === time + HOUR / 1000 ? hourly.snowfall?.[i + 1] : null,
     wind: hourly.wind_speed_10m?.[i],
     humidity: hourly.relative_humidity_2m?.[i],
     condition: wmoCondition(hourly.weather_code?.[i]),
@@ -35,7 +36,7 @@ export async function fetchOpenMeteo({ latitude, longitude }, signal, source = {
     latitude, longitude, timezone: "GMT", timeformat: "unixtime", forecast_days: "16",
     ...(source.model && { models: source.model }),
     temperature_unit: "celsius", wind_speed_unit: "kmh",
-    hourly: "temperature_2m,precipitation_probability,wind_speed_10m,relative_humidity_2m,weather_code,is_day",
+    hourly: "temperature_2m,precipitation_probability,snowfall,wind_speed_10m,relative_humidity_2m,weather_code,is_day",
   });
   const timeout = AbortSignal.timeout(4500);
   const response = await fetch(url, {

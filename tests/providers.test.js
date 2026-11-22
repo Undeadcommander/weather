@@ -65,7 +65,7 @@ function request(app, path, options, context) {
 
 test("Open-Meteo aligns precipitation probability to the beginning of the hour", () => {
   const rows = normalizeOpenMeteo(openMeteo());
-  assert.deepEqual(rows[0], { t: START, temp: 12.1, rain: 25, wind: 10, humidity: 84, condition: "partlyCloudy", night: false });
+  assert.deepEqual(rows[0], { t: START, temp: 12.1, rain: 25, snowfall: null, snowMentioned: false, wind: 10, humidity: 84, condition: "partlyCloudy", night: false });
   assert.equal(rows[1].rain, null);
   assert.equal(rows[2].condition, "rain");
   assert.deepEqual(normalizeOpenMeteo({ hourly: {} }), []);
@@ -73,10 +73,24 @@ test("Open-Meteo aligns precipitation probability to the beginning of the hour",
 
 test("MET Norway converts m/s and preserves unavailable hourly fields", () => {
   const rows = normalizeMetNorway(metNorway());
-  assert.deepEqual(rows[0], { t: START, temp: 10, rain: null, wind: 10.8, humidity: 92, condition: "clear", night: true });
+  assert.deepEqual(rows[0], { t: START, temp: 10, rain: null, snowfall: null, snowMentioned: false, wind: 10.8, humidity: 92, condition: "clear", night: true });
   assert.equal(rows[1].t - rows[0].t, 6 * HOUR);
   assert.equal(rows[1].condition, null);
   assert.equal(rows[1].humidity, null);
+});
+
+test("snow amounts align to the forecast hour and snow mentions survive mixed conditions", () => {
+  const data = openMeteo();
+  data.hourly.snowfall = [0, 1.5, 2];
+  assert.deepEqual(normalizeOpenMeteo(data).map(row => row.snowfall), [1.5, null, null]);
+  const met = metNorway();
+  met.properties.timeseries[0].data.next_1_hours.summary.symbol_code = "snowandthunder";
+  assert.equal(normalizeMetNorway(met)[0].snowMentioned, true);
+  const weather = nws();
+  weather.properties.periods[0].shortForecast = "Chance of flurries";
+  assert.equal(normalizeNws(weather)[0].snowMentioned, true);
+  weather.properties.periods[0].shortForecast = "Freezing rain";
+  assert.equal(normalizeNws(weather)[0].snowMentioned, false);
 });
 
 test("NWS converts temperature and wind ranges and keeps zero distinct from missing", () => {

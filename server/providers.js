@@ -53,7 +53,7 @@ function nwsCondition(value) {
   const condition = value.toLowerCase();
   if (/thunder/.test(condition)) return "thunder";
   if (/sleet|wintry mix|freezing rain/.test(condition)) return "sleet";
-  if (/snow/.test(condition)) return "snow";
+  if (/snow|flurr(?:y|ies)/.test(condition)) return "snow";
   if (/rain|shower/.test(condition)) return "rain";
   if (/drizzle/.test(condition)) return "drizzle";
   if (/fog/.test(condition)) return "fog";
@@ -85,6 +85,7 @@ export function normalizeMetNorway(data) {
       wind: typeof values?.wind_speed === "number" ? values.wind_speed * 3.6 : null,
       humidity: values?.relative_humidity,
       condition: metCondition(symbol),
+      snowMentioned: /snow|sleet/.test(symbol ?? ""),
       night: typeof symbol === "string" && symbol.endsWith("_night"),
     });
   });
@@ -102,6 +103,7 @@ export function normalizeNws(data) {
       wind: nwsWind(period?.windSpeed),
       humidity: period?.relativeHumidity?.value,
       condition: nwsCondition(period?.shortForecast),
+      snowMentioned: /snow|flurr(?:y|ies)|wintry mix/i.test(period?.shortForecast ?? ""),
       night: period?.isDaytime === false,
     });
   });

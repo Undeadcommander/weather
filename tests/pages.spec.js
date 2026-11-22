@@ -77,7 +77,8 @@ test("Pages can compare both additional models through the last reported hour", 
   for (const name of ["NOAA GFS", "DWD ICON"]) await page.getByRole("switch", { name: `Compare ${name}` }).check();
   await expect(page.locator("#source-count")).toHaveText("5 reporting");
   expect(requests.map(url => url.searchParams.get("models"))).toEqual(expect.arrayContaining(["gfs_seamless", "icon_seamless"]));
-  await page.locator("#dates button").last().click();
+  await page.getByRole("button", { name: "Choose forecast date" }).click();
+  await page.getByRole("button", { name: "Wednesday, November 25, 2026" }).click();
   await expect(page.locator("#hours option").last()).toHaveAttribute("value", String(START + 72 * HOUR));
   expect(errors).toEqual([]);
 });
