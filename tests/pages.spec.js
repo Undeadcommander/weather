@@ -4,7 +4,16 @@ import { HOUR, SOURCES } from "../shared/weather.js";
 
 const START = Date.parse("2026-11-22T17:00:00Z");
 const ORIGIN = "http://127.0.0.1:4191";
-const FILES = new Set(["index.html", "app.js", "styles.css", "assets/icon.svg", "assets/clouds.webp", "assets/dm-sans.woff2", "assets/dm-sans-OFL.txt"]);
+const FILES = new Set([
+  "index.html",
+  "theme-init.js",
+  "app.js",
+  "styles.css",
+  "assets/icon.svg",
+  "assets/clouds.webp",
+  "assets/dm-sans.woff2",
+  "assets/dm-sans-OFL.txt",
+]);
 const LONDON = {
   name: "London", admin1: "England", country: "United Kingdom", country_code: "GB",
   latitude: 51.5074, longitude: -0.1278, timezone: "Europe/London",
