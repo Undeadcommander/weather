@@ -1,4 +1,5 @@
 import { SOURCES } from "../shared/weather.js";
+import { fetchOpenMeteo } from "../shared/open-meteo.js";
 import {
   METRICS, atHour, compareSources, conditionInfo, currentSummary, dateChoices, detailLabel,
   displayNumber, formatGap, formatValue, hourLabel, largestGap, locationLabel,
@@ -332,14 +333,19 @@ function render() {
   renderDetails();
 }
 
+async function requestForecast(source, location, signal) {
+  if (source === "open-meteo") return fetchOpenMeteo(location, signal);
+  const query = new URLSearchParams({ source, lat: location.latitude, lon: location.longitude });
+  const response = await fetch(`/api/weather?${query}`, { signal });
+  if (!response.ok) throw new Error("Source unavailable");
+  return response.json();
+}
+
 async function fetchForecast(source, location, controller) {
   const previous = state.results.get(source);
-  const query = new URLSearchParams({ source, lat: location.latitude, lon: location.longitude });
   let result;
   try {
-    const response = await fetch(`/api/weather?${query}`, { signal: controller.signal });
-    if (!response.ok) throw new Error("Source unavailable");
-    const payload = await response.json();
+    const payload = await requestForecast(source, location, controller.signal);
     if (payload.source !== source || !["ok", "unsupported"].includes(payload.status) || !Array.isArray(payload.rows)) {
       throw new Error("Unexpected forecast response");
     }

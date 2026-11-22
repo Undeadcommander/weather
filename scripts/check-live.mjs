@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import worker from "../dist/server/index.js";
+import { fetchOpenMeteo } from "../shared/open-meteo.js";
 
 const origin = "https://skylens.test";
 const fetchApp = (path, init) => worker.fetch(new Request(origin + path, init));
@@ -16,8 +17,8 @@ async function check(label, path, verify) {
   return data;
 }
 
-function forecast(location, source, point, status = "ok") {
-  return check(`${location} · ${source}`, `/api/weather?${new URLSearchParams({ source, ...point })}`, (data) => {
+async function forecast(location, source, point, status = "ok") {
+  function verify(data) {
     assert.equal(data.source, source);
     assert.equal(data.status, status);
     if (status === "ok") {
@@ -27,7 +28,16 @@ function forecast(location, source, point, status = "ok") {
     } else {
       assert.deepEqual(data.rows, []);
     }
-  });
+  }
+  const label = `${location} · ${source}`;
+  if (source === "open-meteo") {
+    const start = performance.now();
+    const data = await fetchOpenMeteo({ latitude: point.lat, longitude: point.lon });
+    verify(data);
+    console.log(`${label} passed in ${Math.round(performance.now() - start)} ms`);
+    return data;
+  }
+  return check(label, `/api/weather?${new URLSearchParams({ source, ...point })}`, verify);
 }
 
 const results = await Promise.allSettled([
@@ -50,8 +60,8 @@ for (const result of results) {
   }
 }
 if (!process.exitCode) {
-  const repeated = await forecast("San Francisco (cache)", "open-meteo", sf);
-  assert.equal(repeated.retrievedAt, results[0].value.retrievedAt);
+  const repeated = await forecast("San Francisco (cache)", "met-norway", sf);
+  assert.equal(repeated.retrievedAt, results[1].value.retrievedAt);
   assert.equal(repeated.stale, false);
 }
 

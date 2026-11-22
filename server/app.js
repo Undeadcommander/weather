@@ -1,11 +1,12 @@
 import { HOUR, SOURCES } from "../shared/weather.js";
+import { OPEN_METEO_ORIGIN } from "../shared/open-meteo.js";
 import { findLocations, getForecast, ProviderError } from "./providers.js";
 
-const SOURCE_IDS = new Set(SOURCES.map(({ id }) => id));
+const SOURCE_IDS = new Set(SOURCES.map(({ id }) => id).filter((id) => id !== "open-meteo"));
 const SECURITY_HEADERS = {
   "Content-Security-Policy": [
     "default-src 'self'", "script-src 'self'", "style-src 'self'", "img-src 'self'",
-    "font-src 'self'", "connect-src 'self'", "base-uri 'none'", "object-src 'none'",
+    "font-src 'self'", `connect-src 'self' ${OPEN_METEO_ORIGIN}`, "base-uri 'none'", "object-src 'none'",
     "frame-ancestors 'none'", "form-action 'self'",
   ].join("; "),
   "X-Content-Type-Options": "nosniff",

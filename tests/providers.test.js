@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { HOUR } from "../shared/weather.js";
+import { normalizeOpenMeteo } from "../shared/open-meteo.js";
 import { createApp } from "../server/app.js";
-import { normalizeMetNorway, normalizeNws, normalizeOpenMeteo } from "../server/providers.js";
+import { normalizeMetNorway, normalizeNws } from "../server/providers.js";
 
 const NOW = Date.parse("2026-11-22T16:13:00Z");
 const START = Math.floor(NOW / HOUR) * HOUR;
@@ -93,21 +94,21 @@ test("weather endpoint fixes origins and identification and drops out-of-range h
   const calls = [];
   const app = createApp({ clock: () => NOW, fetcher: async (url, options) => {
     calls.push([url, options]);
-    return Response.json(openMeteo(START - 2 * HOUR));
+    return Response.json(metNorway(START - 2 * HOUR));
   } });
-  const response = await request(app, weather("open-meteo", "37.774912", "-122.419444"), {}, { contact: "weather.example.com" });
+  const response = await request(app, weather("met-norway", "37.774912", "-122.419444"), {}, { contact: "weather.example.com" });
   assert.equal(response.status, 200);
   const [url, options] = calls[0];
-  assert.equal(url.origin, "https://api.open-meteo.com");
-  assert.equal(url.searchParams.get("longitude"), "-122.4194");
-  assert.equal(url.searchParams.get("latitude"), "37.7749");
+  assert.equal(url.origin, "https://api.met.no");
+  assert.equal(url.searchParams.get("lon"), "-122.4194");
+  assert.equal(url.searchParams.get("lat"), "37.7749");
   assert.equal(options.redirect, "manual");
   assert.ok(options.signal instanceof AbortSignal);
   assert.match(options.headers["User-Agent"], /weather\.example\.com/);
   const payload = await response.json();
   assert.equal(payload.status, "ok");
   assert.equal(payload.stale, false);
-  assert.deepEqual(payload.rows.map(({ t }) => t), [START - HOUR, START + HOUR]);
+  assert.deepEqual(payload.rows.map(({ t }) => t), [START + 4 * HOUR]);
 });
 
 test("NWS uses the hourly endpoint supplied by its points API and reports coverage", async () => {
@@ -162,15 +163,15 @@ test("forecast cache coalesces concurrent requests and honors expiration and sta
   let fail = false;
   const app = createApp({ clock: () => now, fetcher: async () => {
     calls++;
-    return fail ? new Response(null, { status: 503 }) : Response.json(openMeteo());
+    return fail ? new Response(null, { status: 503 }) : Response.json(metNorway());
   } });
-  const path = weather("open-meteo");
+  const path = weather("met-norway");
   const [first, second, third] = await Promise.all(Array.from({ length: 3 }, () => request(app, path).then((r) => r.json())));
   assert.equal(calls, 1);
   assert.deepEqual(first, second);
   assert.deepEqual(second, third);
   assert.equal(first.retrievedAt, NOW);
-  now += 4 * 60_000;
+  now += 9 * 60_000;
   assert.equal((await (await request(app, path)).json()).stale, false);
   assert.equal(calls, 1);
   now += 2 * 60_000;
@@ -269,10 +270,10 @@ test("invalid and oversized upstream responses return a provider-specific failur
     return Response.json({});
   } });
   for (mode of ["empty", "invalid", "oversized"]) {
-    const response = await request(app, weather("open-meteo"));
+    const response = await request(app, weather("met-norway"));
     assert.equal(response.status, 503);
     assert.deepEqual(await response.json(), {
-      source: "open-meteo", status: "unavailable", error: "Forecast is temporarily unavailable",
+      source: "met-norway", status: "unavailable", error: "Forecast is temporarily unavailable",
     });
   }
 });
@@ -300,6 +301,7 @@ test("static responses are allowlisted, revalidatable, and carry security header
   assert.equal(response.headers.get("X-Frame-Options"), "DENY");
   assert.equal(response.headers.get("Referrer-Policy"), "no-referrer");
   assert.match(response.headers.get("Content-Security-Policy"), /frame-ancestors 'none'/);
+  assert.match(response.headers.get("Content-Security-Policy"), /connect-src 'self' https:\/\/api\.open-meteo\.com;/);
   assert.equal(response.headers.has("Access-Control-Allow-Origin"), false);
   const head = await request(app, "/", { method: "HEAD" });
   assert.equal(head.status, 200);

@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base } from "@playwright/test";
 import { DEFAULT_LOCATION, HOUR } from "../shared/weather.js";
+import { OPEN_METEO_ORIGIN } from "../shared/open-meteo.js";
 
 const START = Date.parse("2026-11-22T17:00:00Z");
 const LONDON = {
@@ -37,17 +38,41 @@ function fixture(source, latitude = DEFAULT_LOCATION.latitude, stale = false) {
   return { source, rows, retrievedAt: START, status: "ok", stale };
 }
 
+function openMeteoFixture({ rows }) {
+  return { hourly: {
+    time: [...rows.map(({ t }) => t / 1000), (rows.at(-1).t + HOUR) / 1000],
+    temperature_2m: rows.map(({ temp }) => temp),
+    precipitation_probability: [0, ...rows.map(({ rain }) => rain)],
+    wind_speed_10m: rows.map(({ wind }) => wind),
+    relative_humidity_2m: rows.map(({ humidity }) => humidity),
+    weather_code: rows.map(() => 3),
+    is_day: rows.map(() => 1),
+  } };
+}
+
 async function mockDashboard(page, { forecast, cities } = {}) {
   await page.clock.setFixedTime(START + 15_000);
   const requests = [];
-  await page.route("**/api/weather?*", async (route) => {
+  async function routeForecast(route) {
     const url = new URL(route.request().url());
-    const source = url.searchParams.get("source");
-    const latitude = Number(url.searchParams.get("lat"));
+    const isDirect = url.origin === OPEN_METEO_ORIGIN;
+    const source = isDirect ? "open-meteo" : url.searchParams.get("source");
+    const latitude = Number(url.searchParams.get(isDirect ? "latitude" : "lat"));
     requests.push({ source, latitude });
     if (forecast && await forecast(route, source)) return;
-    await route.fulfill({ json: fixture(source, latitude) });
-  });
+    const data = fixture(source, latitude);
+    if (isDirect) {
+      const headers = route.request().headers();
+      expect(headers.authorization).toBeUndefined();
+      expect(headers.cookie).toBeUndefined();
+      expect(headers.referer).toBeUndefined();
+      await route.fulfill({ json: openMeteoFixture(data), headers: { "Access-Control-Allow-Origin": "*" } });
+    } else {
+      await route.fulfill({ json: data });
+    }
+  }
+  await page.route("**/api/weather?*", routeForecast);
+  await page.route(`${OPEN_METEO_ORIGIN}/v1/forecast?*`, routeForecast);
   await page.route("**/api/locations?*", async (route) => {
     const query = new URL(route.request().url()).searchParams.get("q");
     if (cities && await cities(route, query)) return;
@@ -189,6 +214,37 @@ test("switches cities with keyboard and pointer, uses local time, and saves the 
   await search.fill("London");
   await page.getByRole("option", { name: /London Ontario/ }).click();
   await expect(page.getByRole("heading", { name: "London, Ontario" })).toBeVisible();
+});
+
+test("late direct provider results cannot overwrite forecasts for a newly selected city", async ({ page }) => {
+  let unblock;
+  let delivered;
+  const held = new Promise((resolve) => { unblock = resolve; });
+  const finished = new Promise((resolve) => { delivered = resolve; });
+  await mockDashboard(page, { forecast: async (route, source) => {
+    const url = new URL(route.request().url());
+    if (source !== "open-meteo" || Number(url.searchParams.get("latitude")) !== DEFAULT_LOCATION.latitude) return false;
+    await held;
+    await route.fulfill({
+      json: openMeteoFixture(fixture(source)),
+      headers: { "Access-Control-Allow-Origin": "*" },
+    }).catch(() => {});
+    delivered();
+    return true;
+  } });
+  try {
+    await expect(page.locator("#source-count")).toHaveText("2 reporting");
+    await page.getByRole("combobox", { name: "Search for a city" }).fill("London");
+    await cityOptions(page).first().click();
+    await expect(page.getByRole("heading", { name: "London, England" })).toBeVisible();
+    await expect(page.locator("#hero-temperature")).toHaveText("47°F");
+    unblock();
+    await finished;
+    await expect(page.locator("#hero-temperature")).toHaveText("47°F");
+    await expect(page.locator("#source-count")).toHaveText("2 reporting");
+  } finally {
+    unblock();
+  }
 });
 
 test("handles search no-results, errors, dismissal and stale responses", async ({ page }) => {
