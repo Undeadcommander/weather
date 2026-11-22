@@ -1,5 +1,5 @@
 import { HOUR, SOURCES } from "../shared/weather.js";
-import { findLocations, getForecast } from "./providers.js";
+import { findLocations, getForecast, ProviderError } from "./providers.js";
 
 const SOURCE_IDS = new Set(SOURCES.map(({ id }) => id));
 const SECURITY_HEADERS = {
@@ -25,6 +25,12 @@ function json(body, status = 200, headers = {}) {
     "Cache-Control": "no-store",
     ...headers,
   });
+}
+
+function providerFailure(source, error) {
+  const detail = error instanceof ProviderError ? error.message : error?.name ?? "Unknown error";
+  const status = error instanceof ProviderError ? error.status : undefined;
+  console.warn("Skylens provider failure", source, detail, status ?? "");
 }
 
 function coordinate(value, limit) {
@@ -141,7 +147,8 @@ export function createApp({
           expiresAt: now + HOUR,
         }));
         return json({ locations: data });
-      } catch {
+      } catch (error) {
+        providerFailure("location search", error);
         return json({ error: "Location search is temporarily unavailable" }, 503);
       }
     }
@@ -159,7 +166,8 @@ export function createApp({
         return { data: { source, status, rows, retrievedAt: clock() }, expiresAt };
       });
       return json({ ...data, stale });
-    } catch {
+    } catch (error) {
+      providerFailure(source, error);
       return json({ source, status: "unavailable", error: "Forecast is temporarily unavailable" }, 503);
     }
   };
