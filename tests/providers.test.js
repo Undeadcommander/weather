@@ -101,7 +101,7 @@ test("weather endpoint fixes origins and identification and drops out-of-range h
   assert.equal(url.origin, "https://api.open-meteo.com");
   assert.equal(url.searchParams.get("longitude"), "-122.4194");
   assert.equal(url.searchParams.get("latitude"), "37.7749");
-  assert.equal(options.redirect, "error");
+  assert.equal(options.redirect, "manual");
   assert.ok(options.signal instanceof AbortSignal);
   assert.match(options.headers["User-Agent"], /weather\.example\.com/);
   const payload = await response.json();
@@ -141,6 +141,18 @@ test("an unrecognized upstream path is rejected before making another request", 
   const response = await request(app, weather("nws"));
   assert.equal(response.status, 503);
   assert.equal((await response.json()).status, "unavailable");
+  assert.equal(calls, 1);
+});
+
+test("provider redirects return an unavailable forecast", async () => {
+  let calls = 0;
+  const app = createApp({ clock: () => NOW, fetcher: async (_url, options) => {
+    calls++;
+    assert.equal(options.redirect, "manual");
+    return new Response(null, { status: 302, headers: { Location: "https://api.weather.gov/alerts/" } });
+  } });
+  const response = await request(app, weather("nws"));
+  assert.equal(response.status, 503);
   assert.equal(calls, 1);
 });
 

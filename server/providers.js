@@ -44,7 +44,8 @@ function upstream(fetcher, signal, contact) {
     : DEFAULT_CONTACT;
   return async (url, allowNotFound = false) => {
     const response = await fetcher(url, {
-      redirect: "error",
+      // Workers support manual redirects, which fail the response check below.
+      redirect: "manual",
       signal,
       headers: {
         Accept: "application/geo+json, application/json",
