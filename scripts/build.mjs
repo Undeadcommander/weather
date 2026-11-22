@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const staticBuild = process.argv.includes("--pages");
 const files = [
   ["/app.js", "web/app.js", "text/javascript; charset=utf-8", true],
   ["/styles.css", "web/styles.css", "text/css; charset=utf-8", true],
@@ -20,7 +21,7 @@ function packageAsset(content, type) {
 
 const assets = await Promise.all(files.map(async ([route, file, type, bundle]) => {
   const content = bundle
-    ? (await build({ absWorkingDir: root, entryPoints: [file], bundle: true, minify: true, external: ["/assets/*"], format: "esm", write: false }))
+    ? (await build({ absWorkingDir: root, entryPoints: [file], bundle: true, minify: true, external: ["/assets/*", "./assets/*"], define: { __SKYLENS_STATIC__: String(staticBuild) }, format: "esm", write: false }))
       .outputFiles[0].contents
     : await readFile(new URL(`../${file}`, import.meta.url));
   return [route, packageAsset(content, type)];
@@ -33,6 +34,21 @@ for (const [route, { etag }] of assets) {
   }
 }
 assets.push(["/", packageAsset(markup, "text/html; charset=utf-8")]);
+
+if (staticBuild) {
+  const directory = new URL("../dist/pages/", import.meta.url);
+  for (const [route, asset] of assets) {
+    const destination = new URL(route === "/" ? "index.html" : route.slice(1), directory);
+    await mkdir(new URL(".", destination), { recursive: true });
+    const content = route === "/"
+      ? markup.replaceAll('href="/', 'href="./').replaceAll('src="/', 'src="./')
+      : Buffer.from(asset.data, "base64");
+    await writeFile(destination, content);
+  }
+  await writeFile(new URL(".nojekyll", directory), "");
+  console.log("Built GitHub Pages site in dist/pages");
+  process.exit(0);
+}
 
 await mkdir(new URL("../dist/server/", import.meta.url), { recursive: true });
 await build({

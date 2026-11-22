@@ -1,6 +1,6 @@
 @font-face {
   font-family: "DM Sans";
-  src: url("/assets/dm-sans.woff2") format("woff2");
+  src: url("./assets/dm-sans.woff2") format("woff2");
   font-weight: 400 800;
   font-style: normal;
   font-display: swap;
@@ -205,7 +205,7 @@ ul { list-style: none; padding: 0; }
   background-image:
     linear-gradient(90deg, #221641 2%, #281a4ade 32%, #3b27696e 62%, #5b448f0d 100%),
     linear-gradient(0deg, #28184dba, transparent 65%),
-    url("/assets/clouds.webp");
+    url("./assets/clouds.webp");
   background-position: center, center, center 50%;
   background-size: cover;
   box-shadow: 0 12px 24px -18px #2b2045a6;
@@ -460,7 +460,7 @@ tbody th { font-weight: 800; }
     gap: .85rem;
     align-items: stretch;
     flex-direction: column;
-    background-image: linear-gradient(108deg, #231742fa, #2e1c58a6 70%, #4b32717a), url("/assets/clouds.webp");
+    background-image: linear-gradient(108deg, #231742fa, #2e1c58a6 70%, #4b32717a), url("./assets/clouds.webp");
   }
   .hero-temperature { font-size: 4rem; }
   .hero-condition-icon { width: 3rem; height: 3rem; }

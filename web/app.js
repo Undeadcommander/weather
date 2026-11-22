@@ -1,5 +1,6 @@
 import { SOURCES } from "../shared/weather.js";
 import { fetchOpenMeteo } from "../shared/open-meteo.js";
+import { fetchBrowserForecast, findBrowserLocations } from "../shared/browser-providers.js";
 import {
   METRICS, atHour, compareSources, conditionInfo, currentSummary, dateChoices, detailLabel,
   displayNumber, formatGap, formatValue, hourLabel, largestGap, locationLabel,
@@ -8,6 +9,7 @@ import {
 import { createChart } from "./chart.js";
 
 const STORE_KEY = "skylens.preferences.v1";
+const STATIC_HOSTING = typeof __SKYLENS_STATIC__ !== "undefined" && __SKYLENS_STATIC__;
 const US_COVERAGE = new Set(["US", "PR", "GU", "VI", "AS", "MP", "UM"]);
 const fields = Object.fromEntries([...document.querySelectorAll("[id]")].map((node) => [node.id, node]));
 const $ = (id) => fields[id];
@@ -335,6 +337,7 @@ function render() {
 
 async function requestForecast(source, location, signal) {
   if (source === "open-meteo") return fetchOpenMeteo(location, signal);
+  if (STATIC_HOSTING) return fetchBrowserForecast(source, location, signal);
   const query = new URLSearchParams({ source, lat: location.latitude, lon: location.longitude });
   const response = await fetch(`/api/weather?${query}`, { signal });
   if (!response.ok) throw new Error("Source unavailable");
@@ -476,9 +479,14 @@ function setupSearch() {
     controller = active;
     open("Searching cities…");
     try {
-      const response = await fetch(`/api/locations?${new URLSearchParams({ q: query })}`, { signal: active.signal });
-      if (!response.ok) throw new Error("Search unavailable");
-      const { locations } = await response.json();
+      let locations;
+      if (STATIC_HOSTING) {
+        locations = await findBrowserLocations(query, active.signal);
+      } else {
+        const response = await fetch(`/api/locations?${new URLSearchParams({ q: query })}`, { signal: active.signal });
+        if (!response.ok) throw new Error("Search unavailable");
+        ({ locations } = await response.json());
+      }
       if (controller !== active) return;
       matches = locations;
       list.replaceChildren(...matches.map(({ name, region, country }, index) => {

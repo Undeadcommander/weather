@@ -5,6 +5,7 @@ const port = 4190;
 export default defineConfig({
   testDir: "./tests",
   testMatch: "**/*.spec.js",
+  testIgnore: "**/pages.spec.js",
   fullyParallel: true,
   workers: 2,
   timeout: 25_000,

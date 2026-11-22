@@ -17,6 +17,14 @@ Open http://127.0.0.1:3000. Set `PORT` to use a different port. The build output
 
 The private Sites deployment uses `SKYLENS_REQUIRE_SIGN_IN=1` to require a visitor identity from Sites' sign-in gateway.
 
+## GitHub Pages
+
+The public site is hosted at https://undeadcommander.github.io/weather/. Pushes to `master` run `.github/workflows/pages.yml`, which tests the app, builds the static site, runs the Pages browser tests, and deploys through GitHub Actions. In the repository's **Settings → Pages**, the build source must be **GitHub Actions**.
+
+Run `npm run build:pages` to generate `dist/pages`, then `npm run test:pages` to test that build. Assets use relative paths so the site works under the repository's `/weather/` path or a custom domain. The existing `npm run build` command still builds the Worker deployment.
+
+GitHub Pages has no server-side API. Its build requests forecasts and city search directly from the providers without cookies or credentials. MET Norway and NWS responses use the same validation and normalization as the Worker, including NWS endpoint validation, four-decimal coordinates, request timeouts, and an in-memory forecast cache that honors provider expiry. MET Norway receives the site's origin for client identification. Provider availability, browser CORS policies, and provider traffic limits still apply; the Pages build does not use the private Sites backend.
+
 ## Tests
 
 ```sh
