@@ -15,6 +15,8 @@ npm run dev
 
 Open http://127.0.0.1:3000. Set `PORT` to use a different port. The build outputs a self-contained Worker module at `dist/server/index.js`. The local Node server serves the same build used by Sites. Set `WEATHER_CONTACT` to your deployment URL or operator email when hosting independently so MET Norway and the National Weather Service can identify the client.
 
+The private Sites deployment uses `SKYLENS_REQUIRE_SIGN_IN=1` to require a visitor identity from Sites' sign-in gateway.
+
 ## Tests
 
 ```sh

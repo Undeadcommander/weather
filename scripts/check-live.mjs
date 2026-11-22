@@ -68,9 +68,12 @@ if (!process.exitCode) {
 const main = await fetchApp("/");
 assert.equal(main.status, 200);
 assert.match(main.headers.get("content-security-policy"), /connect-src 'self'/);
-assert.match(await main.text(), /Weather dashboard/);
+const markup = await main.text();
+assert.match(markup, /Weather dashboard/);
 for (const pathname of ["/app.js", "/styles.css", "/assets/clouds.webp", "/assets/dm-sans.woff2", "/assets/icon.svg"]) {
   const head = await fetchApp(pathname, { method: "HEAD" });
   assert.equal(head.status, 200, pathname);
-  assert.ok(head.headers.get("etag"), pathname);
+  const etag = head.headers.get("etag");
+  assert.ok(etag, pathname);
+  if (pathname === "/app.js" || pathname === "/styles.css") assert.ok(markup.includes(`${pathname}?v=${etag.slice(1, -1)}`));
 }

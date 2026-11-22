@@ -311,3 +311,18 @@ test("static responses are allowlisted, revalidatable, and carry security header
   assert.equal(await conditional.text(), "");
   assert.equal((await request(app, "/package.json")).status, 404);
 });
+
+test("private hosting can require a signed-in visitor for pages and API calls", async () => {
+  const app = createApp({
+    assets: new Map([["/", { type: "text/html", etag: '"auth"', body: () => "<h1>Skylens</h1>" }]]),
+    fetcher: async () => Response.json({}),
+  });
+  const settings = { requireSignIn: true };
+  for (const path of ["/", "/api/locations?q=Paris"]) {
+    const denied = await request(app, path, {}, settings);
+    assert.equal(denied.status, 401);
+    assert.equal(denied.headers.get("Cache-Control"), "no-store");
+    const allowed = await request(app, path, { headers: { "OAI-Authenticated-User-Email": "owner@example.com" } }, settings);
+    assert.equal(allowed.status, 200);
+  }
+});

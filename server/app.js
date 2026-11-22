@@ -99,10 +99,15 @@ export function createApp({
   const searchCache = makeCache({ capacity: 200 });
   const allowRequest = makeRateLimiter(rateLimit);
 
-  return async function app(request, { ip = "local", contact } = {}) {
+  return async function app(request, { ip = "local", contact, requireSignIn = false } = {}) {
     const url = new URL(request.url);
     const route = url.pathname;
     const api = route.startsWith("/api/");
+    if (requireSignIn && !request.headers.get("OAI-Authenticated-User-Email")) {
+      return api
+        ? json({ error: "Sign in to Skylens" }, 401)
+        : respond("Sign in to Skylens", 401, { "Cache-Control": "no-store" });
+    }
     const allow = api ? "GET" : "GET, HEAD";
     if (request.method !== "GET" && (api || request.method !== "HEAD")) {
       const headers = { Allow: allow };
