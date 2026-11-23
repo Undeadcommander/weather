@@ -2,49 +2,63 @@
 
 # Skylens
 
-Skylens compares hourly forecasts for the same location and time. Search for a city (for example, `Portland, OR` or `Portland, Maine`) or use the location-pin button to request your device location. Detected locations use the device time zone. Browse through the last hour available from your selected sources, up to 16 forecast days. Enable NOAA GFS and DWD ICON in the source list to compare individual models delivered by Open-Meteo. The largest difference links to the exact forecast values. Source selections, favorites, units, and the last location are stored in the current browser.
+**See how much weather forecasts agree before you trust any one of them.**
 
-In **Sources**, you can also choose ECMWF IFS, Canada GEM, Japan JMA, Météo-France, the UK Met Office, and China CMA GRAPES. To compare AI forecasts, select ECMWF AIFS, DWD AICON, or NOAA AIGFS. NOAA HGEFS Ensemble Mean shows the average across NOAA’s hybrid ensemble members. [CMA forecasts](https://open-meteo.com/en/docs/cma-api) · [ECMWF forecasts](https://open-meteo.com/en/docs/ecmwf-api) · [DWD forecasts](https://open-meteo.com/en/docs/dwd-api) · [NOAA forecasts](https://open-meteo.com/en/docs/gfs-api)
+Most weather apps show a single forecast. Skylens shows several side by side for the same place and hour. Where the forecasts agree, you can plan with more confidence. Where they disagree, you know the weather is less certain.
 
-These optional forecasts are delivered through Open-Meteo. Each has its own chart color and line pattern, and you can star any source for the favorites filter. Forecast range and available metrics vary by model. Unavailable hours and fields remain blank.
+**[Open Skylens →](https://undeadcommander.github.io/weather/)**
 
-## Run locally
+## Why compare forecasts?
 
-Use Node.js 22 or later.
+Every forecast comes from a numerical weather model. Each model starts from slightly different data, uses different physics and resolution, and runs on its own schedule. When models agree, the atmosphere is usually behaving predictably. When they spread apart, for example by a 10° difference in tomorrow's high or a 20% chance of rain against 80%, the forecast is uncertain. A single app's number hides that.
 
-```sh
-npm ci
-npm run dev
-```
+Skylens puts the forecasts in one chart so you can see that spread for yourself.
 
-Open http://127.0.0.1:3000. Set `PORT` to use a different port. The build outputs a self-contained Worker module at `dist/server/index.js`. The local Node server serves the same build used by Sites. Set `WEATHER_CONTACT` to your deployment URL or operator email when hosting independently so MET Norway and the National Weather Service can identify the client.
+## What you can do
 
-The private Sites deployment uses `SKYLENS_REQUIRE_SIGN_IN=1` to require a visitor identity from Sites' sign-in gateway.
+- **Compare hour by hour.** Chart temperature, rain chance, and wind from every selected source on one timeline, in the location's local time, up to 16 days ahead.
+- **Find the biggest disagreement.** The *Greatest difference* panel shows where the sources disagree most and links to the exact values behind it.
+- **See the overall picture.** The headline reading averages all reporting sources, and the humidity, wind, and rain figures use their median. Hover over the chart to see those readings for any hour.
+- **Scan conditions and snow.** An hourly outlook table shows each source's predicted sky conditions and snowfall. Click a row to see the details for that hour.
+- **Look up any place.** Search for a city or state, such as `Portland, OR` or `Portland, Maine`, or use your device's location.
+- **Choose your sources.** Turn sources on or off, star favorites, and filter the comparison to favorites only.
+- **Make it yours.** Switch between °F/mph and °C/km/h, light and dark mode, and six color palettes. Skylens remembers your choices and last location in your browser.
 
-## GitHub Pages
+Skylens also works with a keyboard and screen readers. You can step through the chart's hours with the arrow keys, and every value is also available in a table.
 
-The public site is hosted at https://undeadcommander.github.io/weather/. Pushes to `master` run `.github/workflows/pages.yml`, which tests the app, builds the static site, runs the Pages browser tests, and deploys through GitHub Actions. In the repository's **Settings → Pages**, the build source must be **GitHub Actions**.
+## Forecast sources
 
-Run `npm run build:pages` to generate `dist/pages`, then `npm run test:pages` to test that build. Assets use relative paths so the site works under the repository's `/weather/` path or a custom domain. The existing `npm run build` command still builds the Worker deployment.
+By default, Skylens compares three widely used forecast services:
 
-GitHub Pages has no server-side API. Its build requests forecasts and city search directly from the providers without cookies or credentials. MET Norway and NWS responses use the same validation and normalization as the Worker, including NWS endpoint validation, four-decimal coordinates, request timeouts, and an in-memory forecast cache that honors provider expiry. MET Norway receives the site's origin for client identification. Provider availability, browser CORS policies, and provider traffic limits still apply; the Pages build does not use the private Sites backend.
+| Source | Coverage |
+| --- | --- |
+| [Open-Meteo](https://open-meteo.com/) | Global, blended from several models |
+| [MET Norway](https://www.met.no/en) | Global, from the Norwegian Meteorological Institute |
+| [National Weather Service](https://www.weather.gov/) | United States and its territories |
 
-## Tests
+You can also add individual models, delivered through Open-Meteo:
 
-```sh
-npm test
-npx playwright install chromium
-npm run test:e2e
-npm run build
-npm run test:live
-```
+- **Traditional models:** NOAA GFS (US), DWD ICON (Germany), ECMWF IFS (Europe), Canada GEM, Japan JMA, Météo-France, UK Met Office, and China CMA GRAPES
+- **AI models:** ECMWF AIFS, DWD AICON, and NOAA AIGFS
+- **Ensemble:** NOAA HGEFS Ensemble Mean, the average of NOAA's hybrid ensemble members
 
-The unit and API tests use controlled fixtures. The browser suite runs the built app and covers keyboard and pointer interaction, preferences, coverage, provider failures, and accessibility. `SKYLENS_BROWSER` can point to an installed Chromium browser. The live checks use current forecasts and need network access.
+Each source has its own chart color and line pattern. Forecast range and available measurements vary by source, and Skylens leaves missing hours and fields blank rather than filling them in.
 
-## Forecast data
+## How the numbers are handled
 
-- Open-Meteo and MET Norway provide global coverage. The National Weather Service covers U.S. locations and territories. Open-Meteo also supplies city search. [Open-Meteo](https://open-meteo.com/) · [MET Norway](https://www.met.no/en) · [National Weather Service](https://www.weather.gov/)
-- Skylens aligns readings in UTC and displays them in the city's time zone. It reports rain probability for the hour starting at the displayed time. MET Norway's compact feed has no rain probability, and its longer-range samples can be several hours apart. Missing values remain missing.
-- Forecast requests to Open-Meteo go directly from the browser to its public API without cookies or a referrer. The same-origin backend serves the other feeds and city search. It validates requests, fetches only known provider endpoints, applies timeouts and per-client rate limits, and caches results. The dashboard labels cached forecasts.
-- Open-Meteo's free API is intended for non-commercial use. Review the providers' terms before using this build in a commercial deployment. [Open-Meteo terms](https://open-meteo.com/en/terms) · [MET Norway terms](https://api.met.no/doc/TermsOfService)
-- The cloud image is from Unsplash. DM Sans is distributed under the SIL Open Font License. [Cloud photograph](https://images.unsplash.com/photo-1501630834273-4b5604d2ee31) · [Font license](web/assets/dm-sans-OFL.txt)
+- Skylens aligns every forecast to the same hours in UTC and shows them in the location's time zone.
+- Rain chance applies to the hour that begins at the time shown. MET Norway doesn't publish rain chance, and its longer-range forecasts can be several hours apart.
+- When the National Weather Service gives a wind range, Skylens uses its midpoint.
+- Skylens labels forecasts that come from its cache.
+
+## Privacy
+
+Skylens has no accounts, no tracking, and no cookies. Preferences stay in your browser's local storage. If you use your device's location, Skylens rounds it to about 100 meters and uses it only to request forecasts from the providers.
+
+## Credits
+
+Forecast data comes from [Open-Meteo](https://open-meteo.com/), [MET Norway](https://www.met.no/en), and the [National Weather Service](https://www.weather.gov/). Open-Meteo's free API is for non-commercial use. See the [Open-Meteo terms](https://open-meteo.com/en/terms) and [MET Norway terms](https://api.met.no/doc/TermsOfService). The cloud image is from [Unsplash](https://images.unsplash.com/photo-1501630834273-4b5604d2ee31). DM Sans is distributed under the [SIL Open Font License](web/assets/dm-sans-OFL.txt).
+
+---
+
+To run Skylens yourself, use Node.js 22 or later, run `npm ci && npm run dev`, and open http://127.0.0.1:3000.

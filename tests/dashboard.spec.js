@@ -679,23 +679,37 @@ test("dark mode follows system preference and remembers a manual choice", async 
   await expect(root).toHaveAttribute("data-theme", "light");
 });
 
+const THEME_LABELS = { light: "Daylight", sand: "Sand", mist: "Mist", dark: "Dusk", midnight: "Midnight", forest: "Forest" };
+async function chooseTheme(page, id) {
+  await page.getByRole("button", { name: "Color theme" }).click();
+  await page.getByRole("menuitemradio", { name: THEME_LABELS[id] }).click();
+}
+
 test("theme picker offers two extra light and dark themes and remembers each mode's choice", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await mockDashboard(page);
   await initialForecast(page);
   const root = page.locator("html");
-  const picker = page.getByRole("combobox", { name: "Color theme" });
-  await expect(picker.locator("optgroup[label=Light] option")).toHaveText(["Daylight", "Sand", "Mist"]);
-  await expect(picker.locator("optgroup[label=Dark] option")).toHaveText(["Dusk", "Midnight", "Forest"]);
-  await expect(picker).toHaveValue("light");
+  const button = page.getByRole("button", { name: "Color theme" });
+  const menu = page.getByRole("menu", { name: "Color theme" });
+  await expect(menu).toBeHidden();
+  await button.click();
+  await expect(button).toHaveAttribute("aria-expanded", "true");
+  await expect(menu.getByRole("group", { name: "Light" }).getByRole("menuitemradio")).toHaveText(["Daylight", "Sand", "Mist"]);
+  await expect(menu.getByRole("group", { name: "Dark" }).getByRole("menuitemradio")).toHaveText(["Dusk", "Midnight", "Forest"]);
+  await expect(menu.getByRole("menuitemradio", { checked: true })).toHaveText("Daylight");
   await expect(root).not.toHaveAttribute("data-palette", /.*/);
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(button).toBeFocused();
 
-  await picker.selectOption("sand");
+  await chooseTheme(page, "sand");
+  await expect(menu).toBeHidden();
   await expect(root).toHaveAttribute("data-theme", "light");
   await expect(root).toHaveAttribute("data-palette", "sand");
   await expect(root).toHaveCSS("background-color", "rgb(248, 243, 234)");
 
-  await picker.selectOption("forest");
+  await chooseTheme(page, "forest");
   await expect(root).toHaveAttribute("data-theme", "dark");
   await expect(root).toHaveAttribute("data-palette", "forest");
   await expect(page.getByRole("button", { name: "Dark mode", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -709,24 +723,45 @@ test("theme picker offers two extra light and dark themes and remembers each mod
   await page.getByRole("button", { name: "Dark mode", exact: true }).click();
   await expect(root).toHaveAttribute("data-palette", "forest");
 
-  await picker.selectOption("mist");
+  await chooseTheme(page, "mist");
   await expect(root).toHaveCSS("background-color", "rgb(238, 245, 247)");
-  await picker.selectOption("midnight");
+  await chooseTheme(page, "midnight");
   await expect(root).toHaveCSS("background-color", "rgb(10, 16, 32)");
-  await picker.selectOption("dark");
+  await chooseTheme(page, "dark");
   await expect(root).not.toHaveAttribute("data-palette", /.*/);
   await expect(root).toHaveCSS("background-color", "rgb(18, 16, 25)");
+});
+
+test("theme menu works from the keyboard and closes on an outside click", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await mockDashboard(page);
+  await initialForecast(page);
+  const button = page.getByRole("button", { name: "Color theme" });
+  const menu = page.getByRole("menu", { name: "Color theme" });
+  await button.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitemradio", { name: "Daylight" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("html")).toHaveAttribute("data-palette", "sand");
+  await expect(button).toBeFocused();
+  await button.click();
+  await expect(page.getByRole("menuitemradio", { name: "Sand" })).toBeFocused();
+  await page.locator("h1").click();
+  await expect(menu).toBeHidden();
 });
 
 test("every theme passes accessibility checks", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await mockDashboard(page);
   await initialForecast(page);
-  const picker = page.getByRole("combobox", { name: "Color theme" });
-  for (const theme of ["light", "sand", "mist", "dark", "midnight", "forest"]) {
-    await picker.selectOption(theme);
+  for (const theme of Object.keys(THEME_LABELS)) {
+    await chooseTheme(page, theme);
+    await page.getByRole("button", { name: "Color theme" }).click();
+    await page.getByRole("menu", { name: "Color theme" }).evaluate(menu => Promise.all(menu.getAnimations().map(animation => animation.finished)));
     const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
     expect(result.violations, theme).toEqual([]);
+    await page.keyboard.press("Escape");
   }
 });
 
