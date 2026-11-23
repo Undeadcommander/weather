@@ -370,3 +370,65 @@ test("private hosting can require a signed-in visitor for pages and API calls", 
     assert.equal(allowed.status, 200);
   }
 });
+
+function geocoder(byName) {
+  const calls = [];
+  const fetcher = async (url) => {
+    calls.push({ name: url.searchParams.get("name"), countryCode: url.searchParams.get("countryCode") });
+    return Response.json({ results: byName[url.searchParams.get("name")] ?? [] });
+  };
+  return { calls, fetcher };
+}
+const place = (name, admin1, extra = {}) => ({ name, admin1, latitude: 45 + name.length / 100, longitude: -100 - admin1.length / 100,
+  country: "United States", country_code: "US", timezone: "America/Chicago", feature_code: "PPL", ...extra });
+
+test("state-only searches offer the state's main cities first", async () => {
+  const results = {
+    Portland: [place("Portland", "Maine"), place("Portland", "Oregon")],
+    Salem: [place("Salem", "Massachusetts"), place("Salem", "Oregon")],
+    Oregon: [place("Oregon", "Illinois"), place("Oregon", "Ohio")],
+  };
+  const named = geocoder(results);
+  const matches = await findLocations("Oregon", { fetcher: named.fetcher });
+  assert.deepEqual(matches.map(({ name, region }) => `${name}, ${region}`),
+    ["Portland, Oregon", "Salem, Oregon", "Oregon, Illinois", "Oregon, Ohio"]);
+  assert.ok(named.calls.filter(({ name }) => name !== "Oregon").every(({ countryCode }) => countryCode === "US"));
+
+  const coded = geocoder(results);
+  const codeMatches = await findLocations("or", { fetcher: coded.fetcher });
+  assert.deepEqual(codeMatches.map(({ name }) => name), ["Portland", "Salem"]);
+  assert.ok(!coded.calls.some(({ name }) => name === "or"), "a bare code is not searched as a place name");
+
+  const westVirginia = await findLocations("West Virginia", { fetcher: geocoder({
+    Charleston: [place("Charleston", "South Carolina"), place("Charleston", "West Virginia")],
+  }).fetcher });
+  assert.deepEqual(westVirginia.map(({ region }) => region), ["West Virginia"]);
+});
+
+test("Georgia as a region matches both the country and the US state", async () => {
+  const { calls, fetcher } = geocoder({ Tbilisi: [
+    { name: "Tbilisi", latitude: 41.69, longitude: 44.83, admin1: "Tbilisi", country: "Georgia", country_code: "GE", timezone: "Asia/Tbilisi", feature_code: "PPLC" },
+  ] });
+  const matches = await findLocations("Tbilisi, Georgia", { fetcher });
+  assert.deepEqual(matches.map(({ country }) => country), ["Georgia"]);
+  assert.equal(calls[0].countryCode, null);
+});
+
+test("a trailing state-like word falls back to the full place name", async () => {
+  const { calls, fetcher } = geocoder({ "Tam Ky": [
+    { name: "Tam Ky", latitude: 15.57, longitude: 108.47, admin1: "Quang Nam", country: "Vietnam", country_code: "VN", timezone: "Asia/Ho_Chi_Minh", feature_code: "PPLA" },
+  ] });
+  const matches = await findLocations("Tam Ky", { fetcher });
+  assert.deepEqual(matches.map(({ name }) => name), ["Tam Ky"]);
+  assert.deepEqual(calls.map(({ name }) => name), ["Tam", "Tam Ky"]);
+});
+
+test("location searches skip parks, trails and other non-populated features", async () => {
+  const { fetcher } = geocoder({ Portland: [
+    place("Portland Traction Trail", "Oregon", { feature_code: "TRL" }),
+    place("Portland Police Memorial", "Oregon", { feature_code: "MNMT" }),
+    place("Portland", "Oregon", { feature_code: "PPLA2" }),
+  ] });
+  const matches = await findLocations("Portland, OR", { fetcher });
+  assert.deepEqual(matches.map(({ name }) => name), ["Portland"]);
+});

@@ -2,7 +2,7 @@ import { SOURCES } from "../shared/weather.js";
 import { fetchOpenMeteo } from "../shared/open-meteo.js";
 import { fetchBrowserForecast, findBrowserLocations } from "../shared/browser-providers.js";
 import {
-  METRICS, atHour, averageAtHour, compareSources, conditionInfo, currentSummary, dateChoices, dateKey, detailLabel,
+  METRICS, atHour, averageReading, compareSources, conditionInfo, currentSummary, dateChoices, dateKey, detailLabel,
   displayNumber, formatGap, formatValue, gapAtHour, hourLabel, locationLabel,
   hasSnow, normalizePreferences, snowForecast, timesForDay,
 } from "./model.js";
@@ -20,7 +20,10 @@ const $ = (id) => fields[id];
 
 function readPreferences() {
   try {
-    return normalizePreferences(JSON.parse(localStorage.getItem(STORE_KEY)));
+    const saved = normalizePreferences(JSON.parse(localStorage.getItem(STORE_KEY)));
+    // "Recent" only describes a fix while its follow-up check runs; after a reload it would mislead.
+    if (saved.location.name === "Recent device location") saved.location = { ...saved.location, name: "Device location" };
+    return saved;
   } catch {
     return normalizePreferences();
   }
@@ -254,17 +257,19 @@ function renderSources(active, availableSources, metric) {
   $("refresh").setAttribute("aria-disabled", String(isPending(active)));
 }
 
-function renderHero(active, current, timezone) {
-  const rows = active.map(({ id }) => state.results.get(id)?.byTime?.get(current));
+function renderHero() {
+  const { active, timezone } = view;
+  const time = state.time;
+  const rows = active.map(({ id }) => state.results.get(id)?.byTime?.get(time));
   const summary = currentSummary(rows);
   const unit = preferences.unit;
   $("hero-location").querySelector("span").textContent = locationLabel(preferences.location);
   $("hero-temperature").textContent = formatValue(displayNumber(summary?.temp, "temp", unit), "temp", unit);
   $("hero-icon").querySelector("use").setAttribute("href", `#icon-${summary?.condition?.icon ?? "cloud"}`);
   $("hero-condition").textContent = summary?.condition?.label ??
-    (summary?.isTied ? "Mixed conditions" : summary ? "Current forecast" :
-      isPending(active) ? "Loading forecast" : "Current forecast unavailable");
-  $("hero-time").textContent = summary ? `Forecast for ${hourLabel(current, timezone, true)}` : "";
+    (summary?.isTied ? "Mixed conditions" : summary ? "Forecast" :
+      isPending(active) ? "Loading forecast" : "Forecast unavailable");
+  $("hero-time").textContent = time === null ? "" : detailLabel(time, timezone);
   for (const metric of ["humidity", "wind", "rain"]) {
     $(`hero-${metric}`).textContent = formatValue(displayNumber(summary?.[metric], metric, unit), metric, unit);
   }
@@ -346,7 +351,10 @@ function renderOutlook() {
       }
     }
   });
+  const focused = $("outlook").contains(document.activeElement) ? document.activeElement.dataset?.time : undefined;
   $("outlook").replaceChildren(table);
+  // Rebuilding the table on every forecast response would otherwise drop keyboard focus to <body>.
+  if (focused !== undefined) table.querySelector(`button[data-time="${CSS.escape(focused)}"]`)?.focus();
 }
 
 function renderAnalysis(active) {
@@ -385,9 +393,9 @@ function renderGap(hoveredTime = null) {
   const time = hoveredTime ?? state.time;
   const hour = time === null ? null : hourLabel(time, timezone);
   const gap = gapAtHour(times, series, time);
-  const average = averageAtHour(times, series, time);
+  const average = averageReading(series.map(({ id }) => state.results.get(id)?.byTime?.get(time)), metric, unit);
   $("average-heading").textContent = `Average ${METRICS[metric].label}`;
-  $("average-value").textContent = formatValue(average === null ? null : Math.round(average), metric, unit);
+  $("average-value").textContent = formatValue(average, metric, unit);
   $("average-note").textContent = average === null
     ? `No ${METRICS[metric].label} data ${hour ? `for ${hour}` : "at the selected hour"}.`
     : `At ${hour}, across reporting sources.`;
@@ -471,13 +479,15 @@ function renderDetails() {
 const chart = createChart($("plot"), $("chart-tooltip"), selectTime, renderGap);
 $("outlook").addEventListener("click", event => {
   const row = event.target.closest("tr[data-time]");
-  if (row) selectTime(Number(row.dataset.time));
+  // detail is 0 when a button is activated from the keyboard.
+  if (row) selectTime(Number(row.dataset.time), event.detail === 0);
 });
 
 function selectTime(time, keyboard = false) {
   if (typeof time !== "number" || !view.times.includes(time)) return;
   state.time = time;
   chart.update(view, state.time);
+  renderHero();
   renderGap();
   renderDetails();
   if (keyboard) announce(`Forecast details for ${detailLabel(time, view.timezone)}.`);
@@ -526,7 +536,7 @@ function render() {
   view = { active, times, detailTimes, series, availableSources, metric, unit, timezone, isOutlook, isToday };
 
   renderSources(active, availableSources, metric);
-  renderHero(active, atHour(now), timezone);
+  renderHero();
   renderDates(choices, available, state.day);
   renderOptions();
   renderAnalysis(active);
@@ -534,12 +544,26 @@ function render() {
   renderDetails();
 }
 
+function withTimeout(signal, ms) {
+  if (typeof AbortSignal.any === "function") return AbortSignal.any([signal, AbortSignal.timeout(ms)]);
+  // Older browsers (Safari < 17.4, Chrome < 116) lack AbortSignal.any.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  const abort = () => {
+    clearTimeout(timer);
+    controller.abort();
+  };
+  if (signal.aborted) abort();
+  else signal.addEventListener("abort", abort, { once: true });
+  return controller.signal;
+}
+
 async function requestForecast(source, location, signal) {
   const feed = SOURCES.find(({ id }) => id === source);
   if (source === "open-meteo" || feed.model) return fetchOpenMeteo(location, signal, feed);
   if (STATIC_HOSTING) return fetchBrowserForecast(source, location, signal);
   const query = new URLSearchParams({ source, lat: location.latitude, lon: location.longitude });
-  const response = await fetch(`/api/weather?${query}`, { signal });
+  const response = await fetch(`/api/weather?${query}`, { signal: withTimeout(signal, 8500) });
   if (!response.ok) throw new Error("Source unavailable");
   return response.json();
 }
@@ -584,15 +608,22 @@ function loadForecasts(force = false) {
 
 let locationVersion = 0;
 function chooseLocation(location) {
-  locationVersion++;
   $("detect-location").disabled = false;
   $("geo-status").textContent = "";
-  for (const controller of state.pending.values()) controller.abort();
-  state.pending.clear();
-  state.results.clear();
+  const previous = preferences.location;
+  if (previous.latitude !== location.latitude || previous.longitude !== location.longitude ||
+      previous.countryCode !== location.countryCode || previous.timezone !== location.timezone) {
+    for (const controller of state.pending.values()) controller.abort();
+    state.pending.clear();
+    state.results.clear();
+    state.day = null;
+    state.time = null;
+  } else {
+    for (const [id, result] of state.results) {
+      if (result.status === "unavailable") state.results.delete(id);
+    }
+  }
   preferences.location = location;
-  state.day = null;
-  state.time = null;
   persist();
   loadForecasts();
 }
@@ -664,27 +695,44 @@ function setupSearch() {
     const version = ++locationVersion;
     $("detect-location").disabled = true;
     status.textContent = "Finding your location…";
-    navigator.geolocation.getCurrentPosition(({ coords }) => {
+    function showPosition({ coords }, recent) {
+      chooseLocation({ name: recent ? "Recent device location" : "Current location", region: "", country: "", countryCode: "",
+        latitude: Number(coords.latitude.toFixed(3)), longitude: Number(coords.longitude.toFixed(3)),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
+      announce(recent ? "Loading forecasts for your recent location." : "Loading forecasts for your current location.");
+    }
+    navigator.geolocation.getCurrentPosition(position => {
       if (version !== locationVersion) return;
       input.value = "";
       close();
-      chooseLocation({ name: "Current location", region: "", country: "", countryCode: "",
-        latitude: Number(coords.latitude.toFixed(3)), longitude: Number(coords.longitude.toFixed(3)),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
-      announce("Loading forecasts for your current location.");
+      const needsUpdate = Date.now() - position.timestamp > 5 * 60_000;
+      showPosition(position, needsUpdate);
+      if (needsUpdate) {
+        status.textContent = "Using your recent location while checking your current position…";
+        navigator.geolocation.getCurrentPosition(current => {
+          if (version === locationVersion) showPosition(current, false);
+        }, () => {
+          if (version !== locationVersion) return;
+          status.textContent = "Current position unavailable. Showing your recent location.";
+          // Keep the recent fix, but don't leave a "Recent" label that would persist across reloads.
+          preferences.location = { ...preferences.location, name: "Device location" };
+          persist();
+          render();
+        }, { maximumAge: 0, timeout: 12_000 });
+      }
     }, (error) => {
       if (version !== locationVersion) return;
       $("detect-location").disabled = false;
       status.textContent = error.code === 1 ? "Location access was denied. Search for a city instead." :
         "Could not find your location. Try again or search for a city.";
-    }, { timeout: 12000, maximumAge: 300000 });
+    }, { maximumAge: 30 * 60_000, timeout: 12_000 });
   });
 
   async function search(query) {
     clearSearch();
     const active = new AbortController();
     controller = active;
-    open("Searching cities…");
+    open("Searching places…");
     try {
       let locations;
       if (STATIC_HOSTING) {
@@ -705,15 +753,16 @@ function setupSearch() {
         item.append(text("strong", name), text("span", [region, country].filter(Boolean).join(", ")));
         return item;
       }));
-      open(matches.length ? "" : "No matching cities found.");
+      open(matches.length ? "" : "No matching places found.");
     } catch {
-      if (controller === active) open("City search is unavailable. Try again.");
+      if (controller === active) open("Location search is unavailable. Try again.");
     }
   }
 
   function choose(index) {
     const location = matches[index];
     if (!location) return;
+    locationVersion++;
     input.value = "";
     close();
     chooseLocation(location);

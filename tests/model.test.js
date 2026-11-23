@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_LOCATION, HOUR } from "../shared/weather.js";
 import {
-  averageAtHour, compareSources, conditionInfo, currentSummary, dateChoices, dateKey, detailLabel,
+  averageReading, compareSources, conditionInfo, currentSummary, dateChoices, dateKey, detailLabel,
   displayNumber, formatGap, formatValue, gapAtHour, hourLabel, locationLabel,
   normalizePreferences, timesForDay,
 } from "../web/model.js";
@@ -77,14 +77,14 @@ test("forecast differences use only the requested hour and require two values", 
   assert.equal(gapAtHour(times, series, 4 * HOUR), null);
 });
 
-test("hourly averages include all finite readings and allow a single reporting source", () => {
-  const times = [0, HOUR, 2 * HOUR];
-  const series = [{ values: [10, null, null] }, { values: [10, 0, NaN] }, { values: [40, Infinity, null] }];
-  assert.equal(averageAtHour(times, series, 0), 20);
-  assert.equal(averageAtHour(times, series, HOUR), 0);
-  assert.equal(averageAtHour(times, series, 2 * HOUR), null);
-  assert.equal(averageAtHour(times, series, 3 * HOUR), null);
-  assert.equal(averageAtHour(times, [], 0), null);
+test("hourly averages use unrounded readings and allow a single reporting source", () => {
+  assert.equal(averageReading([{ temp: 10 }, { temp: 10 }, { temp: 40 }], "temp", "C"), 20);
+  assert.equal(averageReading([{ temp: 0 }, null, { temp: NaN }, { temp: Infinity }], "temp", "C"), 0);
+  assert.equal(averageReading([null, {}], "temp", "C"), null);
+  assert.equal(averageReading([], "temp", "C"), null);
+  // 64.4°F and 65.4°F display as 64 and 65, but their true mean (64.9°F) rounds to 65.
+  assert.equal(averageReading([{ temp: 18 }, { temp: 18.5556 }], "temp", "F"), 65);
+  assert.equal(averageReading([{ wind: 16.09344 }, { wind: 19.312128 }], "wind", "F"), 11);
 });
 
 test("current summary uses medians and identifies mixed conditions and night icons", () => {

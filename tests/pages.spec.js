@@ -88,9 +88,9 @@ test("Pages can compare all individual models through their reported forecast ra
   const { requests, errors } = await openPages(page);
   const models = SOURCES.filter(({ model }) => model);
   for (const { name } of models) await page.getByRole("switch", { name: `Compare ${name}` }).check();
-  await expect(page.locator("#source-count")).toHaveText("10 reporting");
-  await expect(page.locator("#legend li")).toHaveCount(10);
-  await expect(page.locator("#details tbody tr")).toHaveCount(10);
+  await expect(page.locator("#source-count")).toHaveText(`${SOURCES.length} reporting`);
+  await expect(page.locator("#legend li")).toHaveCount(SOURCES.length);
+  await expect(page.locator("#details tbody tr")).toHaveCount(SOURCES.length);
   expect(requests.map(url => url.searchParams.get("models"))).toEqual(expect.arrayContaining(models.map(({ model }) => model)));
   await page.getByRole("button", { name: "Rain", exact: true }).click();
   for (const id of ["jma", "meteofrance"]) {
@@ -130,7 +130,7 @@ test("Pages searches cities directly and preserves non-US coverage", async ({ pa
   const { requests, errors } = await openPages(page);
   await expect(page.locator("#source-count")).toHaveText("3 reporting");
   await page.getByRole("combobox", { name: "Search for a city" }).fill("London");
-  await page.getByRole("listbox", { name: "Matching cities" }).getByRole("option").click();
+  await page.getByRole("listbox", { name: "Matching places" }).getByRole("option").click();
   await expect(page.getByRole("heading", { name: "London, England" })).toBeVisible();
   await expect(page.locator("#source-count")).toHaveText("2 reporting");
   await expect(page.locator('[data-source="nws"] .source-status')).toHaveText("Outside coverage");

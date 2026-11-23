@@ -4,7 +4,9 @@
 
 Skylens compares hourly forecasts for the same location and time. Search for a city (for example, `Portland, OR` or `Portland, Maine`) or use the location-pin button to request your device location. Detected locations use the device time zone. Browse through the last hour available from your selected sources, up to 16 forecast days. Enable NOAA GFS and DWD ICON in the source list to compare individual models delivered by Open-Meteo. The largest difference links to the exact forecast values. Source selections, favorites, units, and the last location are stored in the current browser.
 
-Additional models include ECMWF IFS, Canada GEM, Japan JMA, Météo-France, and the UK Met Office. Enable them in **Sources** to compare their hourly forecasts, or star them for the favorites filter. All seven individual models are delivered through Open-Meteo and start disabled. Each has its own chart color and line pattern. Forecast range and available metrics vary by model; unavailable hours and fields remain blank.
+In **Sources**, you can also choose ECMWF IFS, Canada GEM, Japan JMA, Météo-France, the UK Met Office, and China CMA GRAPES. To compare AI forecasts, select ECMWF AIFS, DWD AICON, or NOAA AIGFS. NOAA HGEFS Ensemble Mean shows the average across NOAA’s hybrid ensemble members. [CMA forecasts](https://open-meteo.com/en/docs/cma-api) · [ECMWF forecasts](https://open-meteo.com/en/docs/ecmwf-api) · [DWD forecasts](https://open-meteo.com/en/docs/dwd-api) · [NOAA forecasts](https://open-meteo.com/en/docs/gfs-api)
+
+These optional forecasts are delivered through Open-Meteo. Each has its own chart color and line pattern, and you can star any source for the favorites filter. Forecast range and available metrics vary by model. Unavailable hours and fields remain blank.
 
 ## Run locally
 

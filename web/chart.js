@@ -11,6 +11,11 @@ const LINE_STYLES = {
   jma: { color: "--jma", dash: [14, 3, 3, 3] },
   meteofrance: { color: "--meteofrance", dash: [8, 3, 2, 3, 2, 3] },
   ukmo: { color: "--ukmo", dash: [16, 5] },
+  cma: { color: "--cma", dash: [5, 4, 1, 4] },
+  aifs: { color: "--aifs", dash: [10, 3, 5, 3] },
+  aicon: { color: "--aicon", dash: [1, 4] },
+  aigfs: { color: "--aigfs", dash: [12, 3, 2, 3, 2, 3] },
+  hgefs: { color: "--hgefs", dash: [5, 3, 5, 7] },
 };
 
 function chartScale(metric, values) {
@@ -210,10 +215,23 @@ export function createChart(plot, tooltip, onSelect, onHover) {
   return {
     update(next, time) {
       if (model !== next) {
+        // Keep an open tooltip on the same hour when new forecasts arrive, e.g. mid keyboard navigation.
+        const shown = tooltip.hidden ? null : model?.times[hovered ?? selected];
         hovered = null;
+        model = next;
+        selected = next.times.indexOf(time);
+        redraw();
         tooltip.hidden = true;
+        const index = shown == null || next.isOutlook ? -1 : next.times.indexOf(shown);
+        if (index >= 0 && next.series.length) {
+          if (index !== selected) {
+            hovered = index;
+            redraw();
+          }
+          showTooltip(index);
+        }
+        return;
       }
-      model = next;
       selected = next.times.indexOf(time);
       redraw();
     },

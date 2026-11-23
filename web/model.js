@@ -111,9 +111,11 @@ function valuesAtHour(times, series, time) {
   return series.map(({ values }) => values[index]).filter(Number.isFinite);
 }
 
-export function averageAtHour(times, series, time) {
-  const values = valuesAtHour(times, series, time);
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+// Averages the unrounded readings, then converts and rounds once, so display rounding doesn't skew the mean.
+export function averageReading(rows, metric, unit) {
+  const values = rows.map((row) => row?.[metric]).filter(Number.isFinite);
+  if (!values.length) return null;
+  return displayNumber(values.reduce((sum, value) => sum + value, 0) / values.length, metric, unit);
 }
 
 export function gapAtHour(times, series, time) {

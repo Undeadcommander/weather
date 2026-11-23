@@ -22,7 +22,7 @@ const test = base.extend({
   }, { auto: true }],
 });
 
-const cityOptions = (page) => page.getByRole("listbox", { name: "Matching cities" }).getByRole("option");
+const cityOptions = (page) => page.getByRole("listbox", { name: "Matching places" }).getByRole("option");
 
 function fixture(source, latitude = DEFAULT_LOCATION.latitude, stale = false) {
   const rows = Array.from({ length: 78 }, (_, i) => ({
@@ -31,7 +31,7 @@ function fixture(source, latitude = DEFAULT_LOCATION.latitude, stale = false) {
       ({ "open-meteo": 12 + (i > 20 ? 2 : 0), "met-norway": 13, nws: i === 5 ? 20 : 11 }[source] ?? 14),
     rain: { "open-meteo": i === 3 ? 75 : 10, "met-norway": null, nws: i === 3 ? 15 : 0 }[source],
     wind: { "open-meteo": 16, "met-norway": 8, nws: i === 8 ? 35 : 21 }[source],
-    humidity: 80,
+    humidity: i < 15 ? 80 : 65,
     condition: source === "nws" ? "partlyCloudy" : "cloudy",
     night: false,
   }));
@@ -99,16 +99,16 @@ test("compares individual models in the Worker build and preserves model choices
   await initialForecast(page);
   const models = SOURCES.filter(({ model }) => model);
   for (const { name } of models) await page.getByRole("switch", { name: `Compare ${name}`, exact: true }).check();
-  await expect(page.locator("#source-count")).toHaveText("10 reporting");
+  await expect(page.locator("#source-count")).toHaveText(`${SOURCES.length} reporting`);
   expect(gemRequests).toBe(2);
-  await expect(page.locator("#legend li")).toHaveCount(10);
-  await expect(page.locator("#details tbody tr")).toHaveCount(10);
+  await expect(page.locator("#legend li")).toHaveCount(SOURCES.length);
+  await expect(page.locator("#details tbody tr")).toHaveCount(SOURCES.length);
   for (const { id } of models) {
     expect(requests.some(({ source }) => source === id)).toBe(true);
     await expect(page.locator(`#details tbody tr[data-source="${id}"]`)).toContainText("57°F");
   }
   await page.reload();
-  await expect(page.locator("#source-count")).toHaveText("10 reporting");
+  await expect(page.locator("#source-count")).toHaveText(`${SOURCES.length} reporting`);
   for (const { name } of models) await expect(page.getByRole("switch", { name: `Compare ${name}`, exact: true })).toBeChecked();
 });
 
@@ -119,7 +119,7 @@ for (const width of [1440, 900, 320]) {
     await initialForecast(page);
     const cards = page.locator("#source-list .source-card:visible");
     const sourceList = page.locator("#source-list");
-    await expect(cards).toHaveCount(10);
+    await expect(cards).toHaveCount(SOURCES.length);
     await expect(cards.first().locator(".source-name")).toHaveText("National Weather Service");
     const comparison = page.locator(".comparison");
     const plot = page.locator(".plot-wrap");
@@ -185,6 +185,7 @@ test("starts the forecast difference at the current hour and follows chart hover
   await expect(page.getByRole("heading", { name: "San Francisco, California" })).toBeVisible();
   await expect(page.locator("#hero-temperature")).toHaveText("54°F");
   await expect(page.locator("#hero-humidity")).toHaveText("80%");
+  await expect(page.locator(".hero-stats").getByText("Median across reporting sources")).toBeVisible();
   await expect(page.locator("#hero-condition")).toHaveText("Cloudy");
   await expect(page.locator("#plot")).toBeVisible();
   await expect(page.locator("#legend li")).toHaveCount(3);
@@ -249,6 +250,7 @@ test("switches rain, wind, and temperature and handles missing rain probability"
   const hour = page.getByRole("combobox", { name: "Forecast hour" });
   await expect(page.locator("#gap-value")).toHaveText("10 pp");
   await hour.selectOption({ label: "12 PM PST" });
+  await expect(page.locator("#hero-rain")).toHaveText("45%");
   await expect(page.locator("#gap-value")).toHaveText("60 pp");
   await expect(page.locator("#average-heading")).toHaveText("Average rain chance");
   await expect(page.locator("#average-value")).toHaveText("45%");
@@ -352,6 +354,8 @@ test("changes dates and selects hours with the chart, keyboard, and dropdown", a
   await page.getByRole("button", { name: "Tomorrow" }).click();
   await expect(page.getByRole("button", { name: "Tomorrow" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#detail-time")).toHaveText("Mon, Nov 23 · 12 AM PST");
+  await expect(page.locator("#hero-time")).toHaveText("Mon, Nov 23 · 12 AM PST");
+  await expect(page.locator("#hero-humidity")).toHaveText("65%");
   const plot = page.locator("#plot");
   await plot.focus();
   await plot.press("ArrowRight");
@@ -371,6 +375,10 @@ test("changes dates and selects hours with the chart, keyboard, and dropdown", a
   await expect(page.locator("#detail-time")).toContainText("Tue, Nov 24");
   await page.getByRole("combobox", { name: "Forecast hour" }).selectOption({ label: "5 AM PST" });
   await expect(page.locator("#detail-time")).toContainText("5 AM PST");
+  await expect(page.locator("#hero-time")).toHaveText("Tue, Nov 24 · 5 AM PST");
+  await expect(page.locator("#hero-temperature")).toHaveText("55°F");
+  await page.getByRole("button", { name: "Today", exact: true }).click();
+  await expect(page.locator("#hero-humidity")).toHaveText("80%");
 });
 
 test("stores source switches and favorites and guides users through empty states", async ({ page }) => {
@@ -484,13 +492,13 @@ test("handles search no-results, errors, dismissal and stale responses", async (
     await search.fill("x");
     await expect(search).toHaveAttribute("aria-expanded", "false");
     await search.fill("missing");
-    await expect(page.getByText("No matching cities found.")).toBeVisible();
+    await expect(page.getByText("No matching places found.")).toBeVisible();
     await search.press("Escape");
     await expect(search).toHaveAttribute("aria-expanded", "false");
     await search.fill("error");
-    await expect(page.getByText("City search is unavailable. Try again.")).toBeVisible();
+    await expect(page.getByText("Location search is unavailable. Try again.")).toBeVisible();
     await search.fill("slow");
-    await expect(page.getByText("Searching cities…")).toBeVisible();
+    await expect(page.getByText("Searching places…")).toBeVisible();
     await search.fill("London");
     await expect(cityOptions(page)).toHaveCount(2);
     unblock();
@@ -569,7 +577,50 @@ test("uses device coordinates only after the location button is clicked", async 
   await page.getByRole("button", { name: "Use my location" }).click();
   await expect(page.locator("#hero-location")).toHaveText("Current location");
   await expect.poll(() => requests.some(request => request.latitude === 42.36)).toBe(true);
+  await initialForecast(page);
+  const locationButton = page.getByRole("button", { name: "Use my location" });
+  await locationButton.click();
+  await expect(locationButton).toBeEnabled();
+  await initialForecast(page);
+  expect(requests.filter(request => request.latitude === 42.36)).toHaveLength(3);
 });
+
+for (const selectCity of [false, true]) {
+  test(`shows weather from a recent device fix while ${selectCity ? "a city selection supersedes detection" : "checking for movement"}`, async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "geolocation", { value: {
+        getCurrentPosition(success, _failure, { maximumAge }) {
+          const age = 12 * 60_000;
+          if (maximumAge >= age) {
+            success({ coords: { latitude: 42.36, longitude: -71.06 }, timestamp: Date.now() - age });
+          } else {
+            window.finishLocationCheck = () => success({
+              coords: { latitude: 42.5, longitude: -71.1 }, timestamp: Date.now(),
+            });
+          }
+        },
+      } });
+    });
+    const requests = await mockDashboard(page);
+    await page.getByRole("button", { name: "Use my location" }).click();
+    await expect(page.locator("#hero-location")).toHaveText("Recent device location");
+    await initialForecast(page);
+    expect(requests.filter(request => request.latitude === 42.36)).toHaveLength(3);
+    if (selectCity) {
+      await page.getByRole("combobox", { name: "Search for a city" }).fill("London");
+      await cityOptions(page).first().click();
+    }
+    await page.evaluate(() => window.finishLocationCheck());
+    if (selectCity) {
+      await expect(page.locator("#hero-location")).toHaveText("London, England");
+      expect(requests.some(request => request.latitude === 42.5)).toBe(false);
+    } else {
+      await expect(page.locator("#hero-location")).toHaveText("Current location");
+      await initialForecast(page);
+      expect(requests.filter(request => request.latitude === 42.5)).toHaveLength(3);
+    }
+  });
+}
 
 test("navigation and source links work, with no automated accessibility violations", async ({ page }) => {
   await mockDashboard(page);

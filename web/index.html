@@ -57,11 +57,11 @@
       <div class="tools">
         <form id="location-form" class="location-search" role="search">
           <svg class="icon search-icon" aria-hidden="true"><use href="#icon-search"/></svg>
-          <input id="location-query" name="q" type="search" placeholder="City or city, state" aria-label="Search for a city or city and state"
+          <input id="location-query" name="q" type="search" placeholder="City or state" aria-label="Search for a city or state"
             role="combobox" aria-autocomplete="list" aria-controls="location-options" aria-expanded="false"
             maxlength="80" autocomplete="off" spellcheck="false">
           <div id="location-popover" class="search-popover" hidden>
-            <ul id="location-options" role="listbox" aria-label="Matching cities"></ul>
+            <ul id="location-options" role="listbox" aria-label="Matching places"></ul>
             <p id="location-message" role="status"></p>
           </div>
         </form>
@@ -85,11 +85,14 @@
           <span id="hero-time"></span>
         </div>
       </div>
-      <dl class="hero-stats">
-        <div><dt><svg class="icon" aria-hidden="true"><use href="#icon-drop"/></svg>Humidity</dt><dd id="hero-humidity">—</dd></div>
-        <div><dt><svg class="icon" aria-hidden="true"><use href="#icon-wind"/></svg>Wind</dt><dd id="hero-wind">—</dd></div>
-        <div><dt><svg class="icon" aria-hidden="true"><use href="#icon-rain"/></svg>Rain chance</dt><dd id="hero-rain">—</dd></div>
-      </dl>
+      <div class="hero-stats">
+        <p id="hero-stats-label">Median across reporting sources</p>
+        <dl aria-labelledby="hero-stats-label">
+          <div><dt><svg class="icon" aria-hidden="true"><use href="#icon-drop"/></svg>Humidity</dt><dd id="hero-humidity">—</dd></div>
+          <div><dt><svg class="icon" aria-hidden="true"><use href="#icon-wind"/></svg>Wind</dt><dd id="hero-wind">—</dd></div>
+          <div><dt><svg class="icon" aria-hidden="true"><use href="#icon-rain"/></svg>Rain chance</dt><dd id="hero-rain">—</dd></div>
+        </dl>
+      </div>
     </section>
 
     <div class="dashboard-grid">

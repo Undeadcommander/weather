@@ -134,7 +134,7 @@ export async function getForecast(source, { latitude, longitude }, { fetcher, no
   const rows = validRows(rawRows, now);
   if (rows.length === 0) throw new ProviderError("Forecast contains no usable hours");
   const ttl = source === "met-norway" ? 10 * 60_000 : 5 * 60_000;
-  return { status: "ok", rows, expiresAt: Math.max(now + ttl, result.expiresAt || 0) };
+  return { status: "ok", rows, expiresAt: Math.min(now + HOUR, Math.max(now + ttl, result.expiresAt || 0)) };
 }
 
 function cleanLabel(value) {
@@ -154,11 +154,43 @@ const states = new Map(Object.entries({
   WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
 }));
 
+// Representative cities searched when the whole query is a state: [largest or best-known city, capital].
+const stateCities = {
+  Alabama: ["Birmingham", "Montgomery"], Alaska: ["Anchorage", "Juneau"], Arizona: ["Phoenix"],
+  Arkansas: ["Little Rock"], California: ["Los Angeles", "Sacramento"], Colorado: ["Denver"],
+  Connecticut: ["Bridgeport", "Hartford"], Delaware: ["Wilmington", "Dover"], "District of Columbia": ["Washington"],
+  Florida: ["Miami", "Tallahassee"], Georgia: ["Atlanta"], Hawaii: ["Honolulu"], Idaho: ["Boise"],
+  Illinois: ["Chicago", "Springfield"], Indiana: ["Indianapolis"], Iowa: ["Des Moines"], Kansas: ["Wichita", "Topeka"],
+  Kentucky: ["Louisville", "Frankfort"], Louisiana: ["New Orleans", "Baton Rouge"], Maine: ["Portland", "Augusta"],
+  Maryland: ["Baltimore", "Annapolis"], Massachusetts: ["Boston"], Michigan: ["Detroit", "Lansing"],
+  Minnesota: ["Minneapolis", "Saint Paul"], Mississippi: ["Jackson"], Missouri: ["Kansas City", "Jefferson City"],
+  Montana: ["Billings", "Helena"], Nebraska: ["Omaha", "Lincoln"], Nevada: ["Las Vegas", "Carson City"],
+  "New Hampshire": ["Manchester", "Concord"], "New Jersey": ["Newark", "Trenton"], "New Mexico": ["Albuquerque", "Santa Fe"],
+  "New York": ["New York", "Albany"], "North Carolina": ["Charlotte", "Raleigh"], "North Dakota": ["Fargo", "Bismarck"],
+  Ohio: ["Columbus", "Cleveland"], Oklahoma: ["Oklahoma City", "Tulsa"], Oregon: ["Portland", "Salem"],
+  Pennsylvania: ["Philadelphia", "Harrisburg"], "Rhode Island": ["Providence"], "South Carolina": ["Charleston", "Columbia"],
+  "South Dakota": ["Sioux Falls", "Pierre"], Tennessee: ["Nashville", "Memphis"], Texas: ["Houston", "Austin"],
+  Utah: ["Salt Lake City"], Vermont: ["Burlington", "Montpelier"], Virginia: ["Virginia Beach", "Richmond"],
+  Washington: ["Seattle", "Olympia"], "West Virginia": ["Charleston"], Wisconsin: ["Milwaukee", "Madison"],
+  Wyoming: ["Cheyenne"],
+};
+
+// State names that are also countries, so a region like "Tbilisi, Georgia" still finds the country.
+const countryNames = new Set(["georgia"]);
+
+function stateNamed(label) {
+  const lower = label.toLowerCase();
+  return states.get(label.toUpperCase()) ?? [...states.values()].find(name => name.toLowerCase() === lower);
+}
+
+function isState(item, state) {
+  return item?.country_code === "US" && cleanLabel(item?.admin1).toLowerCase() === state.toLowerCase();
+}
+
 function matchesRegion(item, region, state) {
   if (!region) return true;
-  if (state) {
-    return item?.country_code === "US" && cleanLabel(item?.admin1).toLowerCase() === state.toLowerCase();
-  }
+  if (state && isState(item, state)) return true;
+  if (state && !countryNames.has(region.toLowerCase())) return false;
   const target = region.toLowerCase();
   const admin1 = cleanLabel(item?.admin1).toLowerCase();
   const country = cleanLabel(item?.country).toLowerCase();
@@ -169,20 +201,32 @@ function matchesRegion(item, region, state) {
   return false;
 }
 
-export async function findLocations(query, { fetcher, contact }) {
-  const parts = query.trim().split(/\s*,\s*/);
-  if (parts.length === 1) {
-    const lower = parts[0].toLowerCase();
-    const suffix = [...states.keys(), ...states.values()].sort((left, right) => right.length - left.length)
-      .find(label => lower.endsWith(" " + label.toLowerCase()));
-    if (suffix) parts.splice(0, 1, parts[0].slice(0, -suffix.length).trim(), suffix);
-  }
-  const [city, region = ""] = parts;
-  const state = states.get(region.toUpperCase()) ?? [...states.values()].find(name => name.toLowerCase() === region.toLowerCase());
+// Populated places only, so qualified searches don't surface parks, trails or memorials.
+function isPopulatedPlace(item) {
+  return typeof item?.feature_code !== "string" || item.feature_code.startsWith("PPL");
+}
+
+function toLocation(item) {
+  const name = cleanLabel(item?.name);
+  const latitude = bounded(item?.latitude, -90, 90);
+  const longitude = bounded(item?.longitude, -180, 180);
+  if (!name || latitude === null || longitude === null || !validTimeZone(item.timezone)) return null;
+  return {
+    name,
+    latitude: Number(latitude.toFixed(4)),
+    longitude: Number(longitude.toFixed(4)),
+    region: cleanLabel(item.admin1),
+    country: cleanLabel(item.country),
+    countryCode: /^[A-Z]{2}$/.test(item.country_code) ? item.country_code : "",
+    timezone: item.timezone,
+  };
+}
+
+async function geocode(request, city, region, state) {
   const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
+  const usOnly = state && !countryNames.has(region.toLowerCase());
   url.search = new URLSearchParams({ name: city, count: region ? "100" : "8", language: "en", format: "json",
-    ...(state && { countryCode: "US" }) });
-  const request = upstream(fetcher, AbortSignal.timeout(3500), contact);
+    ...(usOnly && { countryCode: "US" }) });
   const { data } = await request(url);
   if (!data || typeof data !== "object" || Array.isArray(data) ||
       (data.results !== undefined && !Array.isArray(data.results))) {
@@ -190,21 +234,58 @@ export async function findLocations(query, { fetcher, contact }) {
   }
   const locations = [];
   for (const item of data.results ?? []) {
-    if (!matchesRegion(item, region, state)) continue;
-    const name = cleanLabel(item?.name);
-    const latitude = bounded(item?.latitude, -90, 90);
-    const longitude = bounded(item?.longitude, -180, 180);
-    if (!name || latitude === null || longitude === null || !validTimeZone(item.timezone)) continue;
-    locations.push({
-      name,
-      latitude: Number(latitude.toFixed(4)),
-      longitude: Number(longitude.toFixed(4)),
-      region: cleanLabel(item.admin1),
-      country: cleanLabel(item.country),
-      countryCode: /^[A-Z]{2}$/.test(item.country_code) ? item.country_code : "",
-      timezone: item.timezone,
-    });
+    if (!matchesRegion(item, region, state) || !isPopulatedPlace(item)) continue;
+    const location = toLocation(item);
+    if (location) locations.push(location);
     if (locations.length === 8) break;
   }
+  return locations;
+}
+
+function addUnique(target, locations) {
+  for (const location of locations) {
+    if (target.length === 8) break;
+    if (!target.some(({ latitude, longitude }) => latitude === location.latitude && longitude === location.longitude)) {
+      target.push(location);
+    }
+  }
+}
+
+export async function findLocations(query, { fetcher, contact }) {
+  const trimmed = query.trim();
+  const request = upstream(fetcher, AbortSignal.timeout(3500), contact);
+  const parts = trimmed.split(/\s*,\s*/);
+  const wholeState = parts.length === 1 ? stateNamed(trimmed) : undefined;
+
+  if (wholeState) {
+    // A bare state ("Oregon", "OR"): offer its main cities first. Full names also keep ordinary
+    // place-name matches (e.g. "Washington" still finds Washington, DC) after them.
+    const isCode = trimmed.length === 2;
+    const [cities, named] = await Promise.all([
+      Promise.all(stateCities[wholeState].map(city => geocode(request, city, wholeState, wholeState)
+        .then(found => found.slice(0, 1)))),
+      isCode ? [] : geocode(request, trimmed, "", undefined),
+    ]);
+    const locations = [];
+    addUnique(locations, cities.flat());
+    addUnique(locations, named);
+    return locations;
+  }
+
+  let split = false;
+  if (parts.length === 1) {
+    const lower = parts[0].toLowerCase();
+    const suffix = [...states.keys(), ...states.values()].sort((left, right) => right.length - left.length)
+      .find(label => lower.endsWith(" " + label.toLowerCase()));
+    if (suffix) {
+      parts.splice(0, 1, parts[0].slice(0, -suffix.length).trim(), suffix);
+      split = true;
+    }
+  }
+  const [city, region = ""] = parts;
+  const state = stateNamed(region);
+  const locations = await geocode(request, city, region, state);
+  // A trailing word that looked like a state may be part of the name ("Tam Ky", "West Virginia").
+  if (split && !locations.length) return geocode(request, trimmed, "", undefined);
   return locations;
 }
