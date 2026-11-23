@@ -127,10 +127,8 @@ for (const width of [1440, 900, 320]) {
     const initialPanel = await size(comparison);
     const initialPlot = await size(plot);
     const difference = await page.locator("#difference").boundingBox();
-    const average = await page.locator("#average").boundingBox();
-    expect(average.y).toBe(difference.y);
-    expect(average.width).toBeCloseTo(difference.width, 0);
-    expect(average.x).toBeGreaterThan(difference.x + difference.width);
+    const insights = await page.locator("#insights").boundingBox();
+    expect(difference.width).toBeCloseTo(insights.width, 0);
     if (width > 770) {
       const comparisonBox = await comparison.boundingBox();
       const differenceBox = await page.locator("#difference").boundingBox();
@@ -149,7 +147,6 @@ for (const width of [1440, 900, 320]) {
 
     await page.getByRole("button", { name: "Conditions", exact: true }).click();
     await expect(page.locator("#difference")).toBeHidden();
-    await expect(page.locator("#average")).toBeHidden();
     const outlook = page.getByRole("region", { name: "Scrollable hourly outlook" });
     await expect(outlook).toBeVisible();
     expect(await size(plot)).toEqual(initialPlot);
@@ -185,14 +182,13 @@ test("starts the forecast difference at the current hour and follows chart hover
   await expect(page.getByRole("heading", { name: "San Francisco, California" })).toBeVisible();
   await expect(page.locator("#hero-temperature")).toHaveText("54°F");
   await expect(page.locator("#hero-humidity")).toHaveText("80%");
+  await expect(page.locator("#hero-temperature-note")).toHaveText("Average temperature across reporting sources");
   await expect(page.locator(".hero-stats").getByText("Median across reporting sources")).toBeVisible();
   await expect(page.locator("#hero-condition")).toHaveText("Cloudy");
   await expect(page.locator("#plot")).toBeVisible();
   await expect(page.locator("#legend li")).toHaveCount(3);
   await expect(page.locator("#gap-value")).toHaveText("3°F");
   await expect(page.locator("#gap-note")).toContainText("At 9 AM");
-  await expect(page.locator("#average-value")).toHaveText("54°F");
-  await expect(page.locator("#average-note")).toContainText("At 9 AM");
   await expect(page.locator("#detail-time")).toContainText("9 AM PST");
 
   const canvas = page.locator("#chart");
@@ -202,8 +198,8 @@ test("starts the forecast difference at the current hour and follows chart hover
   await expect(page.locator("#hours option").last()).toHaveText("11 PM PST");
   await page.locator("#plot").press("Home");
   await expect(page.locator("#detail-time")).toContainText("12 AM PST");
-  await expect(page.locator("#average-value")).toHaveText("54°F");
-  await expect(page.locator("#average-note")).toContainText("At 12 AM");
+  await expect(page.locator("#hero-temperature")).toHaveText("54°F");
+  await expect(page.locator("#hero-time")).toContainText("12 AM");
   await expect(page.locator('#detail-rows [data-source="open-meteo"]')).toContainText("54°F");
   await page.getByRole("combobox", { name: "Forecast hour" }).selectOption(String(START));
   const shading = () => canvas.evaluate(element => {
@@ -223,19 +219,23 @@ test("starts the forecast difference at the current hour and follows chart hover
   await canvas.hover({ position: afternoon });
   await expect(page.locator("#gap-value")).toHaveText("14°F");
   await expect(page.locator("#gap-note")).toContainText("54°F to 68°F");
-  await expect(page.locator("#average-value")).toHaveText("59°F");
-  await expect(page.locator("#average-note")).toContainText("At 2 PM");
+  await expect(page.locator("#hero-temperature")).toHaveText("59°F");
+  await expect(page.locator("#hero-time")).toContainText("2 PM");
   await expect(page.locator("#detail-time")).toContainText("9 AM PST");
   await page.locator("#comparison-heading").hover();
   await expect(page.locator("#gap-value")).toHaveText("3°F");
-  await expect(page.locator("#average-value")).toHaveText("54°F");
+  await expect(page.locator("#hero-temperature")).toHaveText("54°F");
+  await canvas.hover({ position: { x: 42 + (width - 58) * 12 / 23, y: 90 } });
+  await expect(page.locator("#hero-rain")).toHaveText("45%");
+  await page.locator("#comparison-heading").hover();
+  await expect(page.locator("#hero-rain")).toHaveText("5%");
 
   await canvas.click({ position: afternoon });
   await page.locator("#comparison-heading").hover();
   await expect(page.locator("#gap-value")).toHaveText("14°F");
   await expect(page.getByRole("button", { name: /^Inspect / })).toHaveCount(0);
   await expect(page.locator("#detail-time")).toContainText("2 PM PST");
-  await expect(page.locator("#average-value")).toHaveText("59°F");
+  await expect(page.locator("#hero-temperature")).toHaveText("59°F");
   await expect(page.getByRole("row", { name: /National Weather Service/ })).toContainText("68°FHighest");
   await expect(page.getByRole("row", { name: /Open-Meteo/ })).toContainText("54°FLowest");
   await page.getByRole("button", { name: "Tomorrow", exact: true }).click();
@@ -252,8 +252,6 @@ test("switches rain, wind, and temperature and handles missing rain probability"
   await hour.selectOption({ label: "12 PM PST" });
   await expect(page.locator("#hero-rain")).toHaveText("45%");
   await expect(page.locator("#gap-value")).toHaveText("60 pp");
-  await expect(page.locator("#average-heading")).toHaveText("Average rain chance");
-  await expect(page.locator("#average-value")).toHaveText("45%");
   await expect(page.locator("#legend")).toContainText("MET Norway · No data");
   const metStatus = page.locator('#source-list [data-source="met-norway"] .source-status');
   await expect(metStatus).toHaveText("No rain chance data for this day");
@@ -274,8 +272,7 @@ test("switches rain, wind, and temperature and handles missing rain probability"
   await expect(page.locator("#chart-unit")).toHaveText("temperature (°C)");
   await hour.selectOption({ label: "2 PM PST" });
   await expect(page.locator("#gap-value")).toHaveText("8°C");
-  await expect(page.locator("#average-heading")).toHaveText("Average temperature");
-  await expect(page.locator("#average-value")).toHaveText("15°C");
+  await expect(page.locator("#hero-temperature")).toHaveText("15°C");
   await page.reload();
   await initialForecast(page);
   await expect(page.getByRole("button", { name: /Celsius and kilometers/ })).toHaveAttribute("aria-pressed", "true");
@@ -390,12 +387,12 @@ test("stores source switches and favorites and guides users through empty states
 
   await filter.click();
   await expect(page.getByText("No favorites in this comparison")).toBeVisible();
-  await expect(page.locator("#average-value")).toHaveText("—");
+  await expect(page.locator("#hero-temperature")).toHaveText("—");
   await favorite.click();
   await expect(favorite).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#source-count")).toHaveText("1 reporting");
   await expect(page.locator("#gap-note")).toContainText("at least two sources");
-  await expect(page.locator("#average-value")).toHaveText("54°F");
+  await expect(page.locator("#hero-temperature")).toHaveText("54°F");
   await page.getByRole("button", { name: "Favorite MET Norway" }).click();
   await expect(page.locator("#source-count")).toHaveText("2 reporting");
 
@@ -406,7 +403,7 @@ test("stores source switches and favorites and guides users through empty states
   await expect(filter).toHaveAttribute("aria-pressed", "true");
   await expect(favorite).toHaveAttribute("aria-pressed", "true");
   await expect(toggle).not.toBeChecked();
-  await expect(page.locator("#average-value")).toHaveText("55°F");
+  await expect(page.locator("#hero-temperature")).toHaveText("55°F");
   await favorite.click();
   await expect(favorite).toHaveAttribute("aria-pressed", "false");
   await filter.click();
@@ -680,6 +677,57 @@ test("dark mode follows system preference and remembers a manual choice", async 
   await page.reload();
   await initialForecast(page);
   await expect(root).toHaveAttribute("data-theme", "light");
+});
+
+test("theme picker offers two extra light and dark themes and remembers each mode's choice", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await mockDashboard(page);
+  await initialForecast(page);
+  const root = page.locator("html");
+  const picker = page.getByRole("combobox", { name: "Color theme" });
+  await expect(picker.locator("optgroup[label=Light] option")).toHaveText(["Daylight", "Sand", "Mist"]);
+  await expect(picker.locator("optgroup[label=Dark] option")).toHaveText(["Dusk", "Midnight", "Forest"]);
+  await expect(picker).toHaveValue("light");
+  await expect(root).not.toHaveAttribute("data-palette", /.*/);
+
+  await picker.selectOption("sand");
+  await expect(root).toHaveAttribute("data-theme", "light");
+  await expect(root).toHaveAttribute("data-palette", "sand");
+  await expect(root).toHaveCSS("background-color", "rgb(248, 243, 234)");
+
+  await picker.selectOption("forest");
+  await expect(root).toHaveAttribute("data-theme", "dark");
+  await expect(root).toHaveAttribute("data-palette", "forest");
+  await expect(page.getByRole("button", { name: "Dark mode", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(root).toHaveCSS("background-color", "rgb(12, 21, 16)");
+
+  await page.getByRole("button", { name: "Dark mode", exact: true }).click();
+  await expect(root).toHaveAttribute("data-palette", "sand");
+  await page.reload();
+  await initialForecast(page);
+  await expect(root).toHaveAttribute("data-palette", "sand");
+  await page.getByRole("button", { name: "Dark mode", exact: true }).click();
+  await expect(root).toHaveAttribute("data-palette", "forest");
+
+  await picker.selectOption("mist");
+  await expect(root).toHaveCSS("background-color", "rgb(238, 245, 247)");
+  await picker.selectOption("midnight");
+  await expect(root).toHaveCSS("background-color", "rgb(10, 16, 32)");
+  await picker.selectOption("dark");
+  await expect(root).not.toHaveAttribute("data-palette", /.*/);
+  await expect(root).toHaveCSS("background-color", "rgb(18, 16, 25)");
+});
+
+test("every theme passes accessibility checks", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await mockDashboard(page);
+  await initialForecast(page);
+  const picker = page.getByRole("combobox", { name: "Color theme" });
+  for (const theme of ["light", "sand", "mist", "dark", "midnight", "forest"]) {
+    await picker.selectOption(theme);
+    const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+    expect(result.violations, theme).toEqual([]);
+  }
 });
 
 test("dark mode keeps popovers accessible and fits a narrow screen", async ({ page }) => {

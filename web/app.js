@@ -257,14 +257,15 @@ function renderSources(active, availableSources, metric) {
   $("refresh").setAttribute("aria-disabled", String(isPending(active)));
 }
 
-function renderHero() {
+// Follows the hovered chart hour when there is one, otherwise the selected hour.
+function renderHero(hoveredTime = null) {
   const { active, timezone } = view;
-  const time = state.time;
+  const time = hoveredTime ?? state.time;
   const rows = active.map(({ id }) => state.results.get(id)?.byTime?.get(time));
   const summary = currentSummary(rows);
   const unit = preferences.unit;
   $("hero-location").querySelector("span").textContent = locationLabel(preferences.location);
-  $("hero-temperature").textContent = formatValue(displayNumber(summary?.temp, "temp", unit), "temp", unit);
+  $("hero-temperature").textContent = formatValue(averageReading(rows, "temp", unit), "temp", unit);
   $("hero-icon").querySelector("use").setAttribute("href", `#icon-${summary?.condition?.icon ?? "cloud"}`);
   $("hero-condition").textContent = summary?.condition?.label ??
     (summary?.isTied ? "Mixed conditions" : summary ? "Forecast" :
@@ -393,12 +394,6 @@ function renderGap(hoveredTime = null) {
   const time = hoveredTime ?? state.time;
   const hour = time === null ? null : hourLabel(time, timezone);
   const gap = gapAtHour(times, series, time);
-  const average = averageReading(series.map(({ id }) => state.results.get(id)?.byTime?.get(time)), metric, unit);
-  $("average-heading").textContent = `Average ${METRICS[metric].label}`;
-  $("average-value").textContent = formatValue(average, metric, unit);
-  $("average-note").textContent = average === null
-    ? `No ${METRICS[metric].label} data ${hour ? `for ${hour}` : "at the selected hour"}.`
-    : `At ${hour}, across reporting sources.`;
   $("gap-value").textContent = gap ? formatGap(gap.spread, metric, unit) : "—";
   if (gap?.spread > 0) {
     const label = METRICS[metric].gapLabel;
@@ -476,7 +471,10 @@ function renderDetails() {
   }));
 }
 
-const chart = createChart($("plot"), $("chart-tooltip"), selectTime, renderGap);
+const chart = createChart($("plot"), $("chart-tooltip"), selectTime, (time) => {
+  renderHero(time);
+  renderGap(time);
+});
 $("outlook").addEventListener("click", event => {
   const row = event.target.closest("tr[data-time]");
   // detail is 0 when a button is activated from the keyboard.
