@@ -58,7 +58,3 @@ Skylens has no accounts, no tracking, and no cookies. Preferences stay in your b
 ## Credits
 
 Forecast data comes from [Open-Meteo](https://open-meteo.com/), [MET Norway](https://www.met.no/en), and the [National Weather Service](https://www.weather.gov/). Open-Meteo's free API is for non-commercial use. See the [Open-Meteo terms](https://open-meteo.com/en/terms) and [MET Norway terms](https://api.met.no/doc/TermsOfService). The cloud image is from [Unsplash](https://images.unsplash.com/photo-1501630834273-4b5604d2ee31). DM Sans is distributed under the [SIL Open Font License](web/assets/dm-sans-OFL.txt).
-
----
-
-To run Skylens yourself, use Node.js 22 or later, run `npm ci && npm run dev`, and open http://127.0.0.1:3000.
