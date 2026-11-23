@@ -303,9 +303,17 @@ function renderOutlook() {
   const table = document.createElement("table");
   table.append(text("caption", metric === "snow" ? "Hourly snow forecast" : "Hourly conditions", "sr-only"));
   const header = table.createTHead().insertRow();
-  for (const label of ["Local time", ...series.map(source => source.name)]) {
-    const cell = text("th", label);
+  const timeHeader = text("th", "Local time");
+  timeHeader.scope = "col";
+  timeHeader.append(text("span", "Select an hour", "outlook-hint"));
+  header.append(timeHeader);
+  for (const { id, name } of series) {
+    const cell = text("th", "");
     cell.scope = "col";
+    cell.dataset.source = id;
+    const label = text("span", "", "table-source");
+    label.append(swatch(), text("span", name));
+    cell.append(label);
     header.append(cell);
   }
   const body = table.createTBody();
@@ -322,11 +330,19 @@ function renderOutlook() {
       const cell = row.insertCell();
       const info = values[index];
       if (info) {
-        const content = text("span", "", "table-condition");
-        if (info.icon) content.append(icon(info.icon));
-        content.append(info.label);
+        const content = text("span", "", "outlook-condition");
+        if (info.icon) {
+          content.dataset.weather = info.icon;
+          const mark = text("span", "", "outlook-weather-icon");
+          mark.append(icon(info.icon));
+          content.append(mark);
+        }
+        content.append(text("span", info.label));
         cell.append(content);
-      } else cell.textContent = "—";
+      } else {
+        cell.append(text("span", "—", "unreported"));
+        cell.setAttribute("aria-label", "Not reported");
+      }
     }
   });
   $("outlook").replaceChildren(table);
