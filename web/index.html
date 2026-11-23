@@ -151,8 +151,10 @@
             </div>
             <span id="source-count" class="count-pill"></span>
           </div>
-          <ul id="source-list" class="source-list" aria-labelledby="source-heading"></ul>
-          <button id="toggle-sources" class="source-disclosure" type="button" aria-expanded="false" aria-controls="source-list">Show all sources</button>
+          <div class="source-list-wrap">
+            <ul id="source-list" class="source-list" aria-labelledby="source-heading" tabindex="0"></ul>
+            <div id="source-scroll-track" class="source-scroll-track" aria-hidden="true"><div id="source-scroll-thumb" class="source-scroll-thumb"></div></div>
+          </div>
           <button id="favorites-only" class="favorites-filter" type="button" aria-pressed="false">
             <svg class="icon" aria-hidden="true"><use href="#icon-star"/></svg> Compare favorites only
           </button>

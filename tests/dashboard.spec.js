@@ -64,6 +64,7 @@ async function mockDashboard(page, { forecast, cities } = {}) {
     if (forecast && await forecast(route, source)) return;
     const data = fixture(source, latitude);
     if (isDirect) {
+      expect(url.searchParams.get("past_days")).toBe("1");
       const headers = route.request().headers();
       expect(headers.authorization).toBeUndefined();
       expect(headers.cookie).toBeUndefined();
@@ -97,7 +98,6 @@ test("compares individual models in the Worker build and preserves model choices
   } });
   await initialForecast(page);
   const models = SOURCES.filter(({ model }) => model);
-  await page.getByRole("button", { name: "Show all 10 sources" }).click();
   for (const { name } of models) await page.getByRole("switch", { name: `Compare ${name}`, exact: true }).check();
   await expect(page.locator("#source-count")).toHaveText("10 reporting");
   expect(gemRequests).toBe(2);
@@ -109,19 +109,18 @@ test("compares individual models in the Worker build and preserves model choices
   }
   await page.reload();
   await expect(page.locator("#source-count")).toHaveText("10 reporting");
-  await page.getByRole("button", { name: "Show all 10 sources" }).click();
   for (const { name } of models) await expect(page.getByRole("switch", { name: `Compare ${name}`, exact: true })).toBeChecked();
 });
 
 for (const width of [1440, 900, 320]) {
-  test(`source expansion and Conditions stay within an independent comparison panel at ${width}px`, async ({ page }) => {
+  test(`scrollable sources list and Conditions stay within an independent comparison panel at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await mockDashboard(page);
     await initialForecast(page);
     const cards = page.locator("#source-list .source-card:visible");
     const sourceList = page.locator("#source-list");
-    await expect(cards).toHaveCount(3);
-    await expect(cards.locator(".source-name")).toHaveText(["National Weather Service", "Open-Meteo", "MET Norway"]);
+    await expect(cards).toHaveCount(10);
+    await expect(cards.first().locator(".source-name")).toHaveText("National Weather Service");
     const comparison = page.locator(".comparison");
     const plot = page.locator(".plot-wrap");
     const size = locator => locator.evaluate(element => ({ width: element.clientWidth, height: element.clientHeight }));
@@ -133,24 +132,15 @@ for (const width of [1440, 900, 320]) {
       expect(differenceBox.y).toBe(comparisonBox.y);
       expect(differenceBox.x).toBeGreaterThan(comparisonBox.x + comparisonBox.width);
     }
-    const expand = page.getByRole("button", { name: "Show all 10 sources" });
-    await expand.focus();
-    await page.keyboard.press("Enter");
-    await expect(cards).toHaveCount(10);
-    await expect(page.locator("#toggle-sources")).toHaveAttribute("aria-expanded", "true");
-    await expect(sourceList).toBeFocused();
+    await expect(sourceList).toHaveAttribute("tabindex", "0");
+    expect(await sourceList.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+    await sourceList.focus();
     await page.keyboard.press("ArrowDown");
     await expect.poll(() => sourceList.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
     expect(await size(comparison)).toEqual(initialPanel);
     expect(await size(plot)).toEqual(initialPlot);
     await page.getByRole("switch", { name: "Compare ECMWF IFS", exact: true }).check();
     await expect(page.locator("#source-count")).toHaveText("4 reporting");
-    const withModel = await size(comparison);
-    await page.getByRole("button", { name: "Show fewer sources" }).click();
-    await expect(cards).toHaveCount(3);
-    await expect(page.locator("#source-count")).toHaveText("4 reporting");
-    expect(await size(comparison)).toEqual(withModel);
-    expect(await size(plot)).toEqual(initialPlot);
 
     await page.getByRole("button", { name: "Conditions", exact: true }).click();
     await expect(page.locator("#difference")).toBeHidden();
@@ -159,9 +149,6 @@ for (const width of [1440, 900, 320]) {
     expect(await size(plot)).toEqual(initialPlot);
     expect((await size(outlook)).height).toBe(initialPlot.height);
     expect(await outlook.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
-    const conditionsPanel = await size(comparison);
-    await page.getByRole("button", { name: "Show all 10 sources" }).click();
-    expect(await size(comparison)).toEqual(conditionsPanel);
     await outlook.focus();
     await page.keyboard.press("ArrowDown");
     await expect.poll(() => outlook.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
@@ -177,7 +164,16 @@ test("starts the forecast difference at the current hour and follows chart hover
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
-  await mockDashboard(page);
+  await mockDashboard(page, { forecast: async (route, source) => {
+    if (source !== "open-meteo") return false;
+    const data = fixture(source);
+    const earlier = Array.from({ length: 9 }, (_, index) => ({
+      ...data.rows[0], t: START - (9 - index) * HOUR,
+    }));
+    data.rows.unshift(...earlier);
+    await route.fulfill({ json: openMeteoFixture(data) });
+    return true;
+  } });
   await initialForecast(page);
 
   await expect(page.getByRole("heading", { name: "San Francisco, California" })).toBeVisible();
@@ -192,7 +188,27 @@ test("starts the forecast difference at the current hour and follows chart hover
 
   const canvas = page.locator("#chart");
   const { width } = await canvas.boundingBox();
-  const afternoon = { x: 42 + (width - 58) * 5 / 14, y: 90 };
+  await expect(page.locator("#hours option")).toHaveCount(24);
+  await expect(page.locator("#hours option").first()).toHaveText("12 AM PST");
+  await expect(page.locator("#hours option").last()).toHaveText("11 PM PST");
+  await page.locator("#plot").press("Home");
+  await expect(page.locator("#detail-time")).toContainText("12 AM PST");
+  await expect(page.locator('#detail-rows [data-source="open-meteo"]')).toContainText("54°F");
+  await page.getByRole("combobox", { name: "Forecast hour" }).selectOption(String(START));
+  const shading = () => canvas.evaluate(element => {
+    const context = element.getContext("2d");
+    const scale = element.width / element.clientWidth;
+    return [8.5, 9.5].map(hour => context.getImageData(
+      Math.round((42 + (element.clientWidth - 58) * hour / 23) * scale), Math.round(17 * scale), 1, 1,
+    ).data[3]);
+  });
+  for (const theme of ["light", "dark"]) {
+    if (theme === "dark") await page.getByRole("button", { name: "Dark mode", exact: true }).click();
+    const [past, future] = await shading();
+    expect(past).toBeGreaterThan(0);
+    expect(future).toBe(0);
+  }
+  const afternoon = { x: 42 + (width - 58) * 14 / 23, y: 90 };
   await canvas.hover({ position: afternoon });
   await expect(page.locator("#gap-value")).toHaveText("14°F");
   await expect(page.locator("#gap-note")).toContainText("54°F to 68°F");
@@ -207,6 +223,8 @@ test("starts the forecast difference at the current hour and follows chart hover
   await expect(page.locator("#detail-time")).toContainText("2 PM PST");
   await expect(page.getByRole("row", { name: /National Weather Service/ })).toContainText("68°FHighest");
   await expect(page.getByRole("row", { name: /Open-Meteo/ })).toContainText("54°FLowest");
+  await page.getByRole("button", { name: "Tomorrow", exact: true }).click();
+  expect(await shading()).toEqual([0, 0]);
   expect(errors).toEqual([]);
 });
 
@@ -258,7 +276,7 @@ test("shows hourly conditions and opens Snow only for a selected source and date
   await expect(snow).toBeHidden();
   await page.getByRole("button", { name: "Conditions", exact: true }).click();
   const outlook = page.locator("#outlook");
-  const first = outlook.locator("tbody tr").first();
+  const first = outlook.getByRole("row", { name: /^9 AM PST/ });
   await expect(first.locator("td")).toHaveText(["Sunny", "Cloudy", "Partly cloudy"]);
   await outlook.getByRole("button", { name: "10 AM PST" }).click();
   await expect(page.locator("#detail-time")).toContainText("10 AM PST");

@@ -39,7 +39,7 @@ export function normalizeOpenMeteo(data) {
 export async function fetchOpenMeteo({ latitude, longitude }, signal, source = { id: "open-meteo" }) {
   const url = new URL("/v1/forecast", OPEN_METEO_ORIGIN);
   url.search = new URLSearchParams({
-    latitude, longitude, timezone: "GMT", timeformat: "unixtime", forecast_days: "16",
+    latitude, longitude, timezone: "GMT", timeformat: "unixtime", forecast_days: "16", past_days: "1",
     ...(source.model && { models: source.model }),
     temperature_unit: "celsius", wind_speed_unit: "kmh",
     hourly: "temperature_2m,precipitation_probability,snowfall,wind_speed_10m,relative_humidity_2m,weather_code,is_day",

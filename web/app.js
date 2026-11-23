@@ -88,8 +88,6 @@ const sourceRank = ({ id }) => {
   return rank < 0 ? sourcePriority.length : rank;
 };
 const listedSources = [...SOURCES].sort((a, b) => sourceRank(a) - sourceRank(b));
-const featuredSourceCount = 3;
-let sourcesExpanded = false;
 for (const source of listedSources) {
   const card = text("li", "", "source-card");
   card.dataset.source = source.id;
@@ -134,29 +132,91 @@ for (const source of listedSources) {
   });
 }
 
-function renderSourceDisclosure() {
-  listedSources.forEach(({ id }, index) => {
-    sourceCards.get(id).card.hidden = !sourcesExpanded && index >= featuredSourceCount;
-  });
-  const toggle = $("toggle-sources");
-  toggle.hidden = listedSources.length <= featuredSourceCount;
-  toggle.setAttribute("aria-expanded", String(sourcesExpanded));
-  toggle.textContent = sourcesExpanded ? "Show fewer sources" : `Show all ${listedSources.length} sources`;
+function updateScrollIndicator() {
+  const list = $("source-list");
+  const wrap = list.parentElement;
+  const hasOverflow = list.scrollHeight > list.clientHeight + 1;
+  const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
+  const showOverflow = hasOverflow && !atBottom;
+  list.classList.toggle("has-overflow", showOverflow);
+  if (wrap) wrap.classList.toggle("has-overflow", showOverflow);
+
+  const track = $("source-scroll-track");
+  const thumb = $("source-scroll-thumb");
+  if (track && thumb) {
+    track.style.opacity = hasOverflow ? "1" : "0";
+    track.style.pointerEvents = hasOverflow ? "auto" : "none";
+    if (hasOverflow) {
+      const height = Math.max(12, (list.clientHeight / list.scrollHeight) * 100);
+      thumb.style.height = `${height}%`;
+      const maxScroll = list.scrollHeight - list.clientHeight;
+      const top = maxScroll > 0 ? (list.scrollTop / maxScroll) * (100 - height) : 0;
+      thumb.style.top = `${top}%`;
+    }
+  }
 }
 
-$("toggle-sources").addEventListener("click", () => {
-  sourcesExpanded = !sourcesExpanded;
-  renderSourceDisclosure();
+$("source-list").addEventListener("scroll", updateScrollIndicator, { passive: true });
+
+{
+  const observer = new ResizeObserver(updateScrollIndicator);
+  observer.observe($("source-list"));
+}
+
+{
+  const track = $("source-scroll-track");
+  const thumb = $("source-scroll-thumb");
   const list = $("source-list");
-  if (sourcesExpanded) {
-    list.tabIndex = 0;
-    list.focus({ preventScroll: true });
-  } else {
-    list.scrollTop = 0;
-    list.removeAttribute("tabindex");
+  if (track && thumb && list) {
+    let isDragging = false;
+    let startY = 0;
+    let startScrollTop = 0;
+
+    thumb.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isDragging = true;
+      startY = e.clientY;
+      startScrollTop = list.scrollTop;
+      thumb.setPointerCapture(e.pointerId);
+    });
+
+    thumb.addEventListener("pointermove", (e) => {
+      if (!isDragging) return;
+      const trackHeight = track.clientHeight;
+      const thumbHeight = thumb.clientHeight;
+      const scrollableTrack = trackHeight - thumbHeight;
+      if (scrollableTrack <= 0) return;
+      const deltaY = e.clientY - startY;
+      const scrollableList = list.scrollHeight - list.clientHeight;
+      list.scrollTop = startScrollTop + (deltaY / scrollableTrack) * scrollableList;
+    });
+
+    const stopDrag = (e) => {
+      if (isDragging) {
+        isDragging = false;
+        try { thumb.releasePointerCapture(e.pointerId); } catch {}
+      }
+    };
+    thumb.addEventListener("pointerup", stopDrag);
+    thumb.addEventListener("pointercancel", stopDrag);
+
+    track.addEventListener("pointerdown", (e) => {
+      if (e.target === thumb) return;
+      const rect = track.getBoundingClientRect();
+      const clickY = e.clientY - rect.top;
+      const thumbHeight = thumb.clientHeight;
+      const targetTop = clickY - thumbHeight / 2;
+      const scrollableTrack = rect.height - thumbHeight;
+      if (scrollableTrack > 0) {
+        const scrollableList = list.scrollHeight - list.clientHeight;
+        list.scrollTop = Math.max(0, Math.min(scrollableList, (targetTop / scrollableTrack) * scrollableList));
+      }
+    });
   }
-});
-renderSourceDisclosure();
+}
+
+updateScrollIndicator();
 
 function renderSources(active, availableSources, metric) {
   for (const { id } of SOURCES) {
@@ -439,7 +499,8 @@ function render() {
   }));
   const availableSources = new Set(series.filter(({ values }) => values.some(value => value !== null)).map(({ id }) => id));
   if (!detailTimes.includes(state.time)) state.time = detailTimes.includes(current) ? current : firstPopulated ?? null;
-  view = { active, times, detailTimes, series, availableSources, metric, unit, timezone, isOutlook };
+  const isToday = state.day === dateKey(now, timezone);
+  view = { active, times, detailTimes, series, availableSources, metric, unit, timezone, isOutlook, isToday };
 
   renderSources(active, availableSources, metric);
   renderHero(active, atHour(now), timezone);

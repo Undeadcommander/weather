@@ -123,6 +123,12 @@ export function createChart(plot, tooltip, onSelect, onHover) {
         }
       });
     }
+
+    if (model.isToday && times.length > 1) {
+      const elapsed = Math.min(1, Math.max(0, (Date.now() - times[0]) / (times.at(-1) - times[0])));
+      context.fillStyle = colorFor("--chart-past");
+      context.fillRect(left, top, (right - left) * elapsed, bottom - top);
+    }
   }
 
   function showTooltip(index) {
@@ -198,6 +204,7 @@ export function createChart(plot, tooltip, onSelect, onHover) {
   plot.addEventListener("blur", hideTooltip);
 
   document.addEventListener("themechange", redraw);
+  setInterval(redraw, 60_000);
   new ResizeObserver(redraw).observe(plot);
   document.fonts?.ready.then(redraw);
   return {

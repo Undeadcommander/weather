@@ -154,6 +154,21 @@ const states = new Map(Object.entries({
   WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
 }));
 
+function matchesRegion(item, region, state) {
+  if (!region) return true;
+  if (state) {
+    return item?.country_code === "US" && cleanLabel(item?.admin1).toLowerCase() === state.toLowerCase();
+  }
+  const target = region.toLowerCase();
+  const admin1 = cleanLabel(item?.admin1).toLowerCase();
+  const country = cleanLabel(item?.country).toLowerCase();
+  const code = (item?.country_code ?? "").toLowerCase();
+  if (admin1 === target || country === target || code === target) return true;
+  if (target === "uk" && code === "gb") return true;
+  if (target === "usa" && code === "us") return true;
+  return false;
+}
+
 export async function findLocations(query, { fetcher, contact }) {
   const parts = query.trim().split(/\s*,\s*/);
   if (parts.length === 1) {
@@ -175,8 +190,7 @@ export async function findLocations(query, { fetcher, contact }) {
   }
   const locations = [];
   for (const item of data.results ?? []) {
-    if (region && ((state && item?.country_code !== "US") ||
-        cleanLabel(item?.admin1).toLowerCase() !== (state ?? region).toLowerCase())) continue;
+    if (!matchesRegion(item, region, state)) continue;
     const name = cleanLabel(item?.name);
     const latitude = bounded(item?.latitude, -90, 90);
     const longitude = bounded(item?.longitude, -180, 180);

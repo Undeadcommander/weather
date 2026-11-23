@@ -49,8 +49,10 @@ export function reading(t, values) {
 }
 
 export function validRows(rows, now) {
-  const start = Math.floor(now / HOUR) * HOUR - HOUR;
-  const end = start + 17 * 24 * HOUR;
+  const current = Math.floor(now / HOUR) * HOUR;
+  // Keep earlier hours of the local day, including across UTC and DST boundaries.
+  const start = current - 48 * HOUR;
+  const end = current - HOUR + 17 * 24 * HOUR;
   const distinct = new Map();
   for (const row of rows) {
     if (!Number.isFinite(row.t) || row.t % HOUR || row.t < start || row.t > end) continue;

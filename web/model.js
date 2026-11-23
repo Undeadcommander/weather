@@ -78,9 +78,10 @@ export function atHour(now) {
 
 export function timesForDay(now, day, timezone, end = Infinity) {
   const midnight = Date.parse(`${day}T00:00:00Z`);
-  const start = Math.max(atHour(now), midnight - 15 * HOUR);
+  const start = midnight - 15 * HOUR;
+  const last = Math.min(day === dateKey(now, timezone) ? Infinity : end, midnight + 39 * HOUR);
   const times = [];
-  for (let t = start; t <= Math.min(end, midnight + 39 * HOUR); t += HOUR) {
+  for (let t = start; t <= last; t += HOUR) {
     if (dateKey(t, timezone) === day) times.push(t);
     else if (times.length) break;
   }

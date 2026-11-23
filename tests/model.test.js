@@ -28,10 +28,10 @@ test("calendar choices use the city date across UTC boundaries and the new year"
   assert.equal(locationLabel({ name: "Singapore", country: "Singapore", region: "" }), "Singapore");
 });
 
-test("forecast hours preserve 23-hour and 25-hour local calendar days", () => {
+test("Today includes the full 23-hour and 25-hour local calendar days", () => {
   const timezone = "America/Los_Angeles";
-  const fall = timesForDay(Date.parse("2026-10-31T12:00:00Z"), "2026-11-01", timezone);
-  const spring = timesForDay(Date.parse("2026-03-07T12:00:00Z"), "2026-03-08", timezone);
+  const fall = timesForDay(Date.parse("2026-11-02T06:30:00Z"), "2026-11-01", timezone);
+  const spring = timesForDay(Date.parse("2026-03-09T06:30:00Z"), "2026-03-08", timezone);
   assert.equal(fall.length, 25);
   assert.equal(spring.length, 23);
   assert.equal(hourLabel(fall[1], timezone, true), "1 AM PDT");
@@ -39,6 +39,21 @@ test("forecast hours preserve 23-hour and 25-hour local calendar days", () => {
   assert.equal(spring[2] - spring[1], HOUR);
   assert.equal(detailLabel(spring[2], timezone), "Sun, Mar 8 · 3 AM PDT");
   assert.equal(hourLabel(spring[2], "Asia/Kolkata"), "3:30 PM");
+});
+
+test("Today spans the local day across UTC boundaries even with a partial forecast", () => {
+  const now = Date.parse("2026-11-22T17:30:00Z");
+  for (const timezone of ["America/Los_Angeles", "Pacific/Kiritimati", "Pacific/Pago_Pago"]) {
+    const day = dateKey(now, timezone);
+    const times = timesForDay(now, day, timezone, now);
+    assert.equal(times.length, 24);
+    assert.equal(hourLabel(times[0], timezone), "12 AM");
+    assert.equal(hourLabel(times.at(-1), timezone), "11 PM");
+    assert.ok(times.every(time => dateKey(time, timezone) === day));
+  }
+  const end = Date.parse("2026-11-24T10:00:00Z");
+  const future = timesForDay(now, "2026-11-24", "America/Los_Angeles", end);
+  assert.equal(future.at(-1), end);
 });
 
 test("unit conversions and comparison labels match displayed precision", () => {

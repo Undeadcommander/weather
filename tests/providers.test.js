@@ -17,6 +17,24 @@ test("qualified city searches filter by state before limiting results", async ()
   }
 });
 
+test("qualified city searches match country names, country codes, and international regions", async () => {
+  const parisFr = { name: "Paris", latitude: 48.85, longitude: 2.35, admin1: "Île-de-France", country: "France", country_code: "FR", timezone: "Europe/Paris" };
+  const parisTx = { name: "Paris", latitude: 33.66, longitude: -95.55, admin1: "Texas", country: "United States", country_code: "US", timezone: "America/Chicago" };
+  const londonUk = { name: "London", latitude: 51.5, longitude: -0.12, admin1: "England", country: "United Kingdom", country_code: "GB", timezone: "Europe/London" };
+  const londonCa = { name: "London", latitude: 42.98, longitude: -81.23, admin1: "Ontario", country: "Canada", country_code: "CA", timezone: "America/Toronto" };
+
+  const matchesFr = await findLocations("Paris, France", { fetcher: async () => Response.json({ results: [parisTx, parisFr] }) });
+  assert.deepEqual(matchesFr.map(m => m.country), ["France"]);
+
+  const matchesUk = await findLocations("London, UK", { fetcher: async () => Response.json({ results: [londonCa, londonUk] }) });
+  assert.deepEqual(matchesUk.map(m => m.country), ["United Kingdom"]);
+
+  const matchesUs = await findLocations("San Francisco, US", { fetcher: async () => Response.json({ results: [
+    { name: "San Francisco", latitude: 37.77, longitude: -122.42, admin1: "California", country: "United States", country_code: "US", timezone: "America/Los_Angeles" },
+  ] }) });
+  assert.equal(matchesUs[0].name, "San Francisco");
+});
+
 const NOW = Date.parse("2026-11-22T16:13:00Z");
 const START = Math.floor(NOW / HOUR) * HOUR;
 const ORIGIN = "http://skylens.test";
@@ -116,7 +134,7 @@ test("bad provider fields stay missing instead of becoming zero", () => {
   assert.deepEqual([temp, rain, wind, humidity], [null, null, null, null]);
 });
 
-test("weather endpoint fixes origins and identification and drops out-of-range hours", async () => {
+test("weather endpoint fixes origins and identification and retains earlier hours", async () => {
   const calls = [];
   const app = createApp({ clock: () => NOW, fetcher: async (url, options) => {
     calls.push([url, options]);
@@ -134,7 +152,7 @@ test("weather endpoint fixes origins and identification and drops out-of-range h
   const payload = await response.json();
   assert.equal(payload.status, "ok");
   assert.equal(payload.stale, false);
-  assert.deepEqual(payload.rows.map(({ t }) => t), [START + 4 * HOUR]);
+  assert.deepEqual(payload.rows.map(({ t }) => t), [START - 2 * HOUR, START + 4 * HOUR]);
 });
 
 test("NWS uses the hourly endpoint supplied by its points API and reports coverage", async () => {
