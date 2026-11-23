@@ -520,6 +520,20 @@ tbody th { font-weight: 800; }
 .footer a { text-underline-offset: .15em; }
 .footer a:hover { color: var(--accent-dark); }
 
+@media (min-width: 771px) {
+  .sidebar {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    align-self: stretch;
+    align-items: stretch;
+    contain: size;
+  }
+  .source-panel { display: flex; flex-direction: column; min-height: 0; }
+  .source-panel .panel-heading, .favorites-filter { flex-shrink: 0; }
+  .source-list-wrap { flex: 1; min-height: 0; }
+  .source-list { height: 100%; max-height: none; }
+}
+
 @media (max-width: 1030px) {
   .page, .topbar-inner { padding-inline: 1.6rem; }
   .dashboard-grid { grid-template-columns: minmax(0, 1fr) minmax(280px, .51fr); gap: .95rem; }
