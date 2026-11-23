@@ -424,24 +424,45 @@ function renderAnalysis(active) {
   renderGap();
 }
 
+function gapNotes(metric, unit, hour) {
+  const label = METRICS[metric].gapLabel;
+  const when = hour ? `for ${hour}` : "at the same hour";
+  return {
+    range: (min, max) => `At ${hour}, ${label} range from ${formatValue(min, metric, unit)} to ${formatValue(max, metric, unit)}.`,
+    agree: `At ${hour}, sources agree at the displayed precision.`,
+    waiting: `Waiting for comparable forecasts ${when}.`,
+    missing: `Compare at least two sources with ${METRICS[metric].label} data ${when}.`,
+  };
+}
+
+// Reserve the height of the longest note this metric can show, so hovering hours never resizes the tile.
+let gapSizerKey = null;
+function reserveGapNote(metric, unit) {
+  const key = `${metric}:${unit}`;
+  if (key === gapSizerKey) return;
+  gapSizerKey = key;
+  const notes = gapNotes(metric, unit, "12 AM");
+  const [min, max] = metric === "temp" ? [-40, 110] : [100, 100];
+  const wrap = $("gap-note-wrap");
+  wrap.querySelectorAll(".gap-note-sizer").forEach((sizer) => sizer.remove());
+  wrap.append(...[notes.range(min, max), notes.agree, notes.waiting, notes.missing].map((note) => {
+    const sizer = text("p", note, "gap-note gap-note-sizer");
+    sizer.setAttribute("aria-hidden", "true");
+    return sizer;
+  }));
+}
+
 function renderGap(hoveredTime = null) {
   if (!view || view.isOutlook) return;
   const { active, times, series, metric, unit, timezone } = view;
+  reserveGapNote(metric, unit);
   const time = hoveredTime ?? state.time;
   const hour = time === null ? null : hourLabel(time, timezone);
   const gap = gapAtHour(times, series, time);
   $("gap-value").textContent = gap ? formatGap(gap.spread, metric, unit) : "—";
-  if (gap?.spread > 0) {
-    const label = METRICS[metric].gapLabel;
-    const range = [gap.min, gap.max].map((n) => formatValue(n, metric, unit)).join(" to ");
-    $("gap-note").textContent = `At ${hour}, ${label} range from ${range}.`;
-  } else if (gap) {
-    $("gap-note").textContent = `At ${hour}, sources agree at the displayed precision.`;
-  } else {
-    const when = hour ? `for ${hour}` : "at the same hour";
-    $("gap-note").textContent = isPending(active) ? `Waiting for comparable forecasts ${when}.` :
-      `Compare at least two sources with ${METRICS[metric].label} data ${when}.`;
-  }
+  const notes = gapNotes(metric, unit, hour);
+  $("gap-note").textContent = gap?.spread > 0 ? notes.range(gap.min, gap.max) :
+    gap ? notes.agree : isPending(active) ? notes.waiting : notes.missing;
 }
 
 function renderDetails() {

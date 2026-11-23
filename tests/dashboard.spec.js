@@ -293,6 +293,30 @@ test.describe("on a touch phone", () => {
   });
 });
 
+for (const width of [1440, 900, 375]) {
+  test(`greatest difference keeps one height while hovering hours at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await mockDashboard(page);
+    await initialForecast(page);
+    const tile = page.locator("#difference");
+    const canvas = page.locator("#chart");
+    const box = await canvas.boundingBox();
+    const height = () => tile.evaluate((element) => element.getBoundingClientRect().height);
+    for (const metric of ["Temperature", "Rain", "Wind"]) {
+      await page.getByRole("button", { name: metric, exact: true }).click();
+      await page.locator("h1").hover();
+      const expected = await height();
+      const notes = new Set();
+      for (let step = 0; step <= 12; step++) {
+        await canvas.hover({ position: { x: 50 + (box.width - 66) * step / 12, y: box.height / 2 } });
+        notes.add(await page.locator("#gap-note").textContent());
+        expect(await height(), `${metric} at step ${step}`).toBe(expected);
+      }
+      expect(notes.size, metric).toBeGreaterThan(1);
+    }
+  });
+}
+
 test("switches rain, wind, and temperature and handles missing rain probability", async ({ page }) => {
   await mockDashboard(page);
   await initialForecast(page);
@@ -912,33 +936,33 @@ test("theme picker offers two extra light and dark themes and remembers each mod
   await expect(root).toHaveCSS("background-color", "rgb(18, 16, 25)");
 });
 
-test("switching themes fades the page and the chart, but not on first load or with reduced motion", async ({ page }) => {
+test("switching themes cross-fades the whole page, but not on first load or with reduced motion", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.viewTransitions = 0;
+    const start = document.startViewTransition.bind(document);
+    document.startViewTransition = update => {
+      window.viewTransitions++;
+      return start(update);
+    };
+  });
   await page.emulateMedia({ colorScheme: "light" });
   await mockDashboard(page);
   await initialForecast(page);
   const root = page.locator("html");
-  await expect(root).not.toHaveClass(/theme-fade/);
-  await page.getByRole("button", { name: "Color theme" }).click();
-  const fading = await page.getByRole("menuitemradio", { name: "Midnight" }).evaluate(option => {
-    option.click();
-    return {
-      root: document.documentElement.classList.contains("theme-fade"),
-      body: getComputedStyle(document.body).transitionProperty,
-      chart: document.querySelectorAll(".chart-fade").length,
-    };
-  });
-  expect(fading.root).toBe(true);
-  expect(fading.body).toContain("background-color");
-  expect(fading.chart).toBe(1);
+  const transitions = () => page.evaluate(() => window.viewTransitions);
+  expect(await transitions()).toBe(0);
+
+  await chooseTheme(page, "midnight");
   await expect(root).toHaveAttribute("data-palette", "midnight");
-  await expect(root).not.toHaveClass(/theme-fade/);
-  await expect(page.locator(".chart-fade")).toHaveCount(0);
+  expect(await transitions()).toBe(1);
+  await page.getByRole("button", { name: "Dark mode", exact: true }).click();
+  await expect(root).toHaveAttribute("data-theme", "light");
+  expect(await transitions()).toBe(2);
 
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   await chooseTheme(page, "sand");
   await expect(root).toHaveAttribute("data-palette", "sand");
-  await expect(root).not.toHaveClass(/theme-fade/);
-  await expect(page.locator(".chart-fade")).toHaveCount(0);
+  expect(await transitions()).toBe(2);
 });
 
 test("theme menu works from the keyboard and closes on an outside click", async ({ page }) => {
@@ -967,7 +991,6 @@ test("every theme passes accessibility checks", async ({ page }) => {
   for (const theme of Object.keys(THEME_LABELS)) {
     await chooseTheme(page, theme);
     await page.getByRole("button", { name: "Color theme" }).click();
-    await expect(page.locator("html")).not.toHaveClass(/theme-fade/);
     await page.evaluate(() => Promise.allSettled(document.getAnimations().map(animation => animation.finished)));
     const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
     expect(result.violations, theme).toEqual([]);

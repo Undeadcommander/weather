@@ -674,6 +674,10 @@ ul { list-style: none; padding: 0; }
 .insight-icon .icon { width: 1rem; height: 1rem; }
 .gap-value { margin-top: .42rem; font-size: 1.95rem; line-height: 1.15; font-weight: 800; letter-spacing: -.05em; }
 .gap-note { margin-top: .32rem; color: var(--insight-note); font-size: .88rem; line-height: 1.38; }
+/* Hidden copies of the longest notes share the note's cell, so the tile keeps one height while hovering. */
+.gap-note-wrap { display: grid; }
+.gap-note-wrap > .gap-note { grid-area: 1 / 1; }
+.gap-note-sizer { visibility: hidden; }
 
 .details { margin-top: 1.2rem; padding: 1.2rem 1.35rem .95rem; }
 .details .panel-heading { align-items: center; }
@@ -776,20 +780,9 @@ tbody th { font-weight: 800; }
   *, *::before, *::after { animation-duration: .01ms !important; }
 }
 
-/* Fade colors for a moment while switching themes */
-:root.theme-fade,
-:root.theme-fade *,
-:root.theme-fade *::before,
-:root.theme-fade *::after {
-  transition: background-color .3s ease, border-color .3s ease, color .3s ease, fill .3s ease, stroke .3s ease, box-shadow .3s ease !important;
-}
-.chart-fade { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) {
-  :root.theme-fade,
-  :root.theme-fade *,
-  :root.theme-fade *::before,
-  :root.theme-fade *::after { transition: none !important; }
-}
+/* Theme switches cross-fade the whole page in one composited step */
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: .25s; animation-timing-function: ease; }
 
 :root[data-theme="dark"] {
   color-scheme: dark;

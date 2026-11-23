@@ -7,7 +7,6 @@ export function initializeTheme() {
   const system = matchMedia("(prefers-color-scheme: dark)");
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   let state = load();
-  let fadeTimer = 0;
 
   for (const [mode, heading] of [["light", "Light"], ["dark", "Dark"]]) {
     const group = document.createElement("div");
@@ -47,13 +46,7 @@ export function initializeTheme() {
     } catch {}
   }
 
-  // A short-lived class fades colors between themes instead of snapping.
-  function render(animate = true) {
-    if (animate && !reducedMotion.matches) {
-      root.classList.add("theme-fade");
-      clearTimeout(fadeTimer);
-      fadeTimer = setTimeout(() => root.classList.remove("theme-fade"), 400);
-    }
+  function paint() {
     const id = apply(state);
     const dark = root.dataset.theme === "dark";
     for (const option of options) option.setAttribute("aria-checked", String(option.dataset.themeId === id));
@@ -62,6 +55,15 @@ export function initializeTheme() {
     toggle.title = dark ? "Switch to light mode" : "Switch to dark mode";
     toggle.querySelector("use").setAttribute("href", dark ? "#icon-sun" : "#icon-moon");
     document.dispatchEvent(new Event("themechange"));
+  }
+
+  // The browser cross-fades snapshots of the old and new page, so every color (and the chart) changes in step.
+  function render(animate = true) {
+    if (animate && !reducedMotion.matches && document.startViewTransition && !document.hidden) {
+      document.startViewTransition(paint);
+    } else {
+      paint();
+    }
   }
 
   function setOpen(open, focus) {
