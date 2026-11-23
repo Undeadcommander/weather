@@ -776,6 +776,21 @@ tbody th { font-weight: 800; }
   *, *::before, *::after { animation-duration: .01ms !important; }
 }
 
+/* Fade colors for a moment while switching themes */
+:root.theme-fade,
+:root.theme-fade *,
+:root.theme-fade *::before,
+:root.theme-fade *::after {
+  transition: background-color .3s ease, border-color .3s ease, color .3s ease, fill .3s ease, stroke .3s ease, box-shadow .3s ease !important;
+}
+.chart-fade { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  :root.theme-fade,
+  :root.theme-fade *,
+  :root.theme-fade *::before,
+  :root.theme-fade *::after { transition: none !important; }
+}
+
 :root[data-theme="dark"] {
   color-scheme: dark;
   --page: #121019;

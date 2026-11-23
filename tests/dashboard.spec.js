@@ -912,6 +912,35 @@ test("theme picker offers two extra light and dark themes and remembers each mod
   await expect(root).toHaveCSS("background-color", "rgb(18, 16, 25)");
 });
 
+test("switching themes fades the page and the chart, but not on first load or with reduced motion", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await mockDashboard(page);
+  await initialForecast(page);
+  const root = page.locator("html");
+  await expect(root).not.toHaveClass(/theme-fade/);
+  await page.getByRole("button", { name: "Color theme" }).click();
+  const fading = await page.getByRole("menuitemradio", { name: "Midnight" }).evaluate(option => {
+    option.click();
+    return {
+      root: document.documentElement.classList.contains("theme-fade"),
+      body: getComputedStyle(document.body).transitionProperty,
+      chart: document.querySelectorAll(".chart-fade").length,
+    };
+  });
+  expect(fading.root).toBe(true);
+  expect(fading.body).toContain("background-color");
+  expect(fading.chart).toBe(1);
+  await expect(root).toHaveAttribute("data-palette", "midnight");
+  await expect(root).not.toHaveClass(/theme-fade/);
+  await expect(page.locator(".chart-fade")).toHaveCount(0);
+
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await chooseTheme(page, "sand");
+  await expect(root).toHaveAttribute("data-palette", "sand");
+  await expect(root).not.toHaveClass(/theme-fade/);
+  await expect(page.locator(".chart-fade")).toHaveCount(0);
+});
+
 test("theme menu works from the keyboard and closes on an outside click", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await mockDashboard(page);
@@ -938,7 +967,8 @@ test("every theme passes accessibility checks", async ({ page }) => {
   for (const theme of Object.keys(THEME_LABELS)) {
     await chooseTheme(page, theme);
     await page.getByRole("button", { name: "Color theme" }).click();
-    await page.getByRole("menu", { name: "Color theme" }).evaluate(menu => Promise.all(menu.getAnimations().map(animation => animation.finished)));
+    await expect(page.locator("html")).not.toHaveClass(/theme-fade/);
+    await page.evaluate(() => Promise.allSettled(document.getAnimations().map(animation => animation.finished)));
     const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
     expect(result.violations, theme).toEqual([]);
     await page.keyboard.press("Escape");

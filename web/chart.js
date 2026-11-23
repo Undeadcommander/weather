@@ -271,7 +271,25 @@ export function createChart(plot, tooltip, onSelect, onHover) {
   });
   plot.addEventListener("blur", hideTooltip);
 
-  document.addEventListener("themechange", redraw);
+  // The canvas can't transition its colors, so cross-fade a snapshot of the old theme instead.
+  let fade;
+  document.addEventListener("themechange", () => {
+    fade?.remove();
+    fade = null;
+    if (document.documentElement.classList.contains("theme-fade") && model && !plot.hidden && canvas.width && canvas.height) {
+      const snapshot = document.createElement("canvas");
+      snapshot.className = "chart-fade";
+      snapshot.setAttribute("aria-hidden", "true");
+      snapshot.width = canvas.width;
+      snapshot.height = canvas.height;
+      snapshot.getContext("2d")?.drawImage(canvas, 0, 0);
+      canvas.after(snapshot);
+      fade = snapshot;
+      snapshot.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: "ease" }).finished
+        .then(() => snapshot.remove(), () => snapshot.remove());
+    }
+    redraw();
+  });
   setInterval(redraw, 60_000);
   new ResizeObserver(redraw).observe(plot);
   document.fonts?.ready.then(redraw);

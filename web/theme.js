@@ -5,7 +5,9 @@ export function initializeTheme() {
   const popover = document.getElementById("theme-popover");
   const { THEMES, load, apply } = window.skylensTheme;
   const system = matchMedia("(prefers-color-scheme: dark)");
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   let state = load();
+  let fadeTimer = 0;
 
   for (const [mode, heading] of [["light", "Light"], ["dark", "Dark"]]) {
     const group = document.createElement("div");
@@ -45,7 +47,13 @@ export function initializeTheme() {
     } catch {}
   }
 
-  function render() {
+  // A short-lived class fades colors between themes instead of snapping.
+  function render(animate = true) {
+    if (animate && !reducedMotion.matches) {
+      root.classList.add("theme-fade");
+      clearTimeout(fadeTimer);
+      fadeTimer = setTimeout(() => root.classList.remove("theme-fade"), 400);
+    }
     const id = apply(state);
     const dark = root.dataset.theme === "dark";
     for (const option of options) option.setAttribute("aria-checked", String(option.dataset.themeId === id));
@@ -63,7 +71,7 @@ export function initializeTheme() {
     if (!open && focus) button.focus();
   }
 
-  render();
+  render(false);
   toggle.addEventListener("click", () => {
     state.mode = root.dataset.theme === "dark" ? "light" : "dark";
     save();
