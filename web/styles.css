@@ -343,7 +343,7 @@ ul { list-style: none; padding: 0; }
 .outlook-hint { display: block; margin-top: .2rem; font-size: .68rem; font-weight: 500; }
 .outlook tbody th { position: sticky; left: 0; z-index: 1; }
 .outlook thead th:first-child { left: 0; z-index: 3; }
-.outlook tbody tr { --outlook-row: var(--surface); }
+.outlook tbody tr { --outlook-row: var(--surface); cursor: pointer; }
 .outlook tbody tr:nth-child(even) { --outlook-row: color-mix(in srgb, var(--soft) 55%, var(--surface)); }
 .outlook tbody tr:hover { --outlook-row: var(--soft); }
 .outlook tbody tr:has(button[aria-pressed="true"]) { --outlook-row: color-mix(in srgb, var(--lavender) 65%, var(--surface)); }

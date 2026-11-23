@@ -319,6 +319,7 @@ function renderOutlook() {
   const body = table.createTBody();
   times.forEach((time, index) => {
     const row = body.insertRow();
+    row.dataset.time = time;
     const hour = text("th", "");
     hour.scope = "row";
     const button = text("button", hourLabel(time, timezone, true));
@@ -463,8 +464,8 @@ function renderDetails() {
 
 const chart = createChart($("plot"), $("chart-tooltip"), selectTime, renderGap);
 $("outlook").addEventListener("click", event => {
-  const button = event.target.closest("button[data-time]");
-  if (button) selectTime(Number(button.dataset.time));
+  const row = event.target.closest("tr[data-time]");
+  if (row) selectTime(Number(row.dataset.time));
 });
 
 function selectTime(time, keyboard = false) {

@@ -278,8 +278,12 @@ test("shows hourly conditions and opens Snow only for a selected source and date
   const outlook = page.locator("#outlook");
   const first = outlook.getByRole("row", { name: /^9 AM PST/ });
   await expect(first.locator("td")).toHaveText(["Sunny", "Cloudy", "Partly cloudy"]);
-  await outlook.getByRole("button", { name: "10 AM PST" }).click();
+  await outlook.getByRole("row", { name: /^10 AM PST/ }).locator("td").first().click();
   await expect(page.locator("#detail-time")).toContainText("10 AM PST");
+  await expect(outlook.getByRole("button", { name: "10 AM PST" })).toHaveAttribute("aria-pressed", "true");
+  await outlook.getByRole("button", { name: "11 AM PST" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#detail-time")).toContainText("11 AM PST");
   await page.getByRole("button", { name: "Tomorrow" }).click();
   await snow.click();
   await expect(outlook.getByRole("row", { name: /1 AM PST/ }).first()).toContainText("1 in");
