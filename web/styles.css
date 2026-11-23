@@ -574,6 +574,7 @@ tbody th { font-weight: 800; }
     align-items: stretch;
     contain: size;
   }
+  .sidebar:has(> .insight[hidden]) { grid-template-rows: minmax(0, 1fr); }
   .source-panel { display: flex; flex-direction: column; min-height: 0; }
   .source-panel .panel-heading, .favorites-filter { flex-shrink: 0; }
   .source-list-wrap { flex: 1; min-height: 0; }
