@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_LOCATION, HOUR } from "../shared/weather.js";
 import {
-  compareSources, conditionInfo, currentSummary, dateChoices, dateKey, detailLabel,
+  averageAtHour, compareSources, conditionInfo, currentSummary, dateChoices, dateKey, detailLabel,
   displayNumber, formatGap, formatValue, gapAtHour, hourLabel, locationLabel,
   normalizePreferences, timesForDay,
 } from "../web/model.js";
@@ -75,6 +75,16 @@ test("forecast differences use only the requested hour and require two values", 
   assert.equal(gapAtHour(times, series, 2 * HOUR).spread, 6);
   assert.equal(gapAtHour(times, series, 3 * HOUR).spread, 0);
   assert.equal(gapAtHour(times, series, 4 * HOUR), null);
+});
+
+test("hourly averages include all finite readings and allow a single reporting source", () => {
+  const times = [0, HOUR, 2 * HOUR];
+  const series = [{ values: [10, null, null] }, { values: [10, 0, NaN] }, { values: [40, Infinity, null] }];
+  assert.equal(averageAtHour(times, series, 0), 20);
+  assert.equal(averageAtHour(times, series, HOUR), 0);
+  assert.equal(averageAtHour(times, series, 2 * HOUR), null);
+  assert.equal(averageAtHour(times, series, 3 * HOUR), null);
+  assert.equal(averageAtHour(times, [], 0), null);
 });
 
 test("current summary uses medians and identifies mixed conditions and night icons", () => {

@@ -133,15 +133,25 @@
         <ul id="legend" class="legend" aria-label="Chart legend"></ul>
       </section>
 
-      <aside class="sidebar" aria-label="Sources and differences">
-        <section id="difference" class="insight" aria-labelledby="insight-heading">
-          <div class="insight-heading">
-            <span class="insight-icon"><svg class="icon" aria-hidden="true"><use href="#icon-compare"/></svg></span>
-            <h2 id="insight-heading">Greatest difference</h2>
-          </div>
-          <p id="gap-value" class="gap-value">—</p>
-          <p id="gap-note" class="gap-note"></p>
-        </section>
+      <aside class="sidebar" aria-label="Sources and forecast insights">
+        <div id="insights" class="insights">
+          <section id="difference" class="insight" aria-labelledby="insight-heading">
+            <div class="insight-heading">
+              <span class="insight-icon"><svg class="icon" aria-hidden="true"><use href="#icon-compare"/></svg></span>
+              <h2 id="insight-heading">Greatest difference</h2>
+            </div>
+            <p id="gap-value" class="gap-value">—</p>
+            <p id="gap-note" class="gap-note"></p>
+          </section>
+          <section id="average" class="insight" aria-labelledby="average-heading">
+            <div class="insight-heading">
+              <span class="insight-icon"><svg class="icon" aria-hidden="true"><use href="#icon-thermometer"/></svg></span>
+              <h2 id="average-heading">Average temperature</h2>
+            </div>
+            <p id="average-value" class="gap-value">—</p>
+            <p id="average-note" class="gap-note"></p>
+          </section>
+        </div>
 
         <section id="sources" class="panel source-panel" aria-labelledby="source-heading">
           <div class="panel-heading">

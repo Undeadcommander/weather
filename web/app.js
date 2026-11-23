@@ -2,7 +2,7 @@ import { SOURCES } from "../shared/weather.js";
 import { fetchOpenMeteo } from "../shared/open-meteo.js";
 import { fetchBrowserForecast, findBrowserLocations } from "../shared/browser-providers.js";
 import {
-  METRICS, atHour, compareSources, conditionInfo, currentSummary, dateChoices, dateKey, detailLabel,
+  METRICS, atHour, averageAtHour, compareSources, conditionInfo, currentSummary, dateChoices, dateKey, detailLabel,
   displayNumber, formatGap, formatValue, gapAtHour, hourLabel, locationLabel,
   hasSnow, normalizePreferences, snowForecast, timesForDay,
 } from "./model.js";
@@ -366,7 +366,7 @@ function renderAnalysis(active) {
   }
 
   $("legend").hidden = isOutlook;
-  $("difference").hidden = isOutlook;
+  $("insights").hidden = isOutlook;
   if (isOutlook) return;
   $("legend").replaceChildren(...series.map(({ id, name }) => {
     const item = document.createElement("li");
@@ -385,6 +385,12 @@ function renderGap(hoveredTime = null) {
   const time = hoveredTime ?? state.time;
   const hour = time === null ? null : hourLabel(time, timezone);
   const gap = gapAtHour(times, series, time);
+  const average = averageAtHour(times, series, time);
+  $("average-heading").textContent = `Average ${METRICS[metric].label}`;
+  $("average-value").textContent = formatValue(average === null ? null : Math.round(average), metric, unit);
+  $("average-note").textContent = average === null
+    ? `No ${METRICS[metric].label} data ${hour ? `for ${hour}` : "at the selected hour"}.`
+    : `At ${hour}, across reporting sources.`;
   $("gap-value").textContent = gap ? formatGap(gap.spread, metric, unit) : "—";
   if (gap?.spread > 0) {
     const label = METRICS[metric].gapLabel;

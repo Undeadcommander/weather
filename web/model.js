@@ -106,9 +106,18 @@ export function formatGap(value, metric, unit) {
   return metric === "rain" ? `${value} pp` : formatValue(value, metric, unit);
 }
 
-export function gapAtHour(times, series, time) {
+function valuesAtHour(times, series, time) {
   const index = times.indexOf(time);
-  const values = series.map(({ values }) => values[index]).filter(Number.isFinite);
+  return series.map(({ values }) => values[index]).filter(Number.isFinite);
+}
+
+export function averageAtHour(times, series, time) {
+  const values = valuesAtHour(times, series, time);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+export function gapAtHour(times, series, time) {
+  const values = valuesAtHour(times, series, time);
   if (values.length < 2) return null;
   const min = Math.min(...values);
   const max = Math.max(...values);
