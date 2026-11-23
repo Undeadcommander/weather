@@ -9,6 +9,14 @@ function rateLimitDelay(retryAfter) {
   return Math.max(0, Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now());
 }
 
+async function outsideDomain(response) {
+  try {
+    return (await readJson(response))?.reason === "No data is available for this location";
+  } catch {
+    return false;
+  }
+}
+
 function wmoCondition(code) {
   if (code === 0) return "clear";
   if (code === 1 || code === 2) return "partlyCloudy";
@@ -62,6 +70,10 @@ export async function fetchOpenMeteo({ latitude, longitude }, signal, source = {
       signal?.throwIfAborted();
       response = await request();
     }
+  }
+  if (response.status === 400 && source.model && await outsideDomain(response)) {
+    // Regional models answer with an error for places beyond their domain.
+    return { source: source.id, status: "unsupported", rows: [], retrievedAt: Date.now(), stale: false };
   }
   if (!response.ok) {
     await response.body?.cancel();

@@ -1,4 +1,5 @@
 import { SOURCES } from "../shared/weather.js";
+import { fetchBrightSky } from "../shared/bright-sky.js";
 import { fetchOpenMeteo } from "../shared/open-meteo.js";
 import { fetchBrowserForecast, findBrowserLocations } from "../shared/browser-providers.js";
 import {
@@ -30,7 +31,9 @@ function readPreferences() {
 }
 
 const preferences = readPreferences();
-const state = { day: null, metric: "temp", time: null, results: new Map(), pending: new Map() };
+const state = { day: null, metric: "temp", time: null, results: new Map(), pending: new Map(), retries: new Map() };
+// Delays before each automatic retry of a source whose forecast came back unavailable.
+const RETRY_DELAYS = [2_000, 5_000, 10_000];
 let view;
 let hourSignature = "";
 
@@ -236,7 +239,9 @@ function renderSources(active, availableSources, metric) {
     if (!enabled) label = "Hidden";
     else if (preferences.favoritesOnly && !isFavorite) label = "Outside favorites";
     else if (!canReport(id) || result?.status === "unsupported") label = "Outside coverage";
-    else if (state.pending.has(id)) label = result?.status === "ok" ? "Refreshing…" : "Loading…";
+    else if (state.pending.has(id)) {
+      label = result?.status === "ok" ? "Refreshing…" : result?.status === "unavailable" ? "Retrying…" : "Loading…";
+    }
     else if (result?.status === "ok") {
       if (availableSources.has(id)) {
         marker = result.stale ? "stale" : "ok";
@@ -559,6 +564,7 @@ function withTimeout(signal, ms) {
 async function requestForecast(source, location, signal) {
   const feed = SOURCES.find(({ id }) => id === source);
   if (source === "open-meteo" || feed.model) return fetchOpenMeteo(location, signal, feed);
+  if (feed.provider === "brightsky") return fetchBrightSky(location, signal, feed);
   if (STATIC_HOSTING) return fetchBrowserForecast(source, location, signal);
   const query = new URLSearchParams({ source, lat: location.latitude, lon: location.longitude });
   const response = await fetch(`/api/weather?${query}`, { signal: withTimeout(signal, 8500) });
@@ -583,6 +589,8 @@ async function fetchForecast(source, location, controller) {
   if (state.pending.get(source) !== controller || controller.signal.aborted) return;
   state.pending.delete(source);
   state.results.set(source, { ...result, checkedAt: Date.now() });
+  if (result.status === "unavailable") scheduleRetry(source, location);
+  else clearRetry(source);
   render();
 
   const active = inComparison();
@@ -591,17 +599,93 @@ async function fetchForecast(source, location, controller) {
   }
 }
 
+function startForecast(source) {
+  const controller = new AbortController();
+  state.pending.set(source, controller);
+  void fetchForecast(source, preferences.location, controller);
+}
+
+// Retries an unavailable source on its own, up to RETRY_DELAYS.length times.
+function scheduleRetry(source, location) {
+  const attempt = state.retries.get(source)?.attempt ?? 0;
+  // Give up for now, but let a later failure (after the next normal reload) start over.
+  if (attempt >= RETRY_DELAYS.length) {
+    clearRetry(source);
+    return;
+  }
+  const timer = setTimeout(() => {
+    state.retries.set(source, { attempt: attempt + 1 });
+    if (!samePlace(preferences.location, location) || state.pending.has(source) || !canReport(source) ||
+        state.results.get(source)?.status !== "unavailable" || !inComparison().some(({ id }) => id === source)) return;
+    startForecast(source);
+    render();
+  }, RETRY_DELAYS[attempt]);
+  state.retries.set(source, { attempt, timer });
+}
+
+function clearRetry(source) {
+  clearTimeout(state.retries.get(source)?.timer);
+  state.retries.delete(source);
+}
+
+function cancelRetries() {
+  for (const source of [...state.retries.keys()]) clearRetry(source);
+}
+
 function loadForecasts(force = false) {
-  const { location } = preferences;
   for (const { id } of inComparison()) {
     if (!canReport(id) || state.pending.has(id)) continue;
     const previous = state.results.get(id);
     if (!force && previous && Date.now() - previous.checkedAt < 5 * 60_000) continue;
-    const controller = new AbortController();
-    state.pending.set(id, controller);
-    void fetchForecast(id, location, controller);
+    startForecast(id);
   }
   render();
+}
+
+// Whether two locations would return the same forecasts; labels such as the name may differ.
+function samePlace(a, b) {
+  return a.latitude === b.latitude && a.longitude === b.longitude &&
+    a.countryCode === b.countryCode && a.timezone === b.timezone;
+}
+
+// Approximate great-circle distance, accurate enough for distances of a few kilometres.
+function distanceKm(a, b) {
+  const radians = Math.PI / 180;
+  const x = (b.longitude - a.longitude) * radians * Math.cos((a.latitude + b.latitude) / 2 * radians);
+  const y = (b.latitude - a.latitude) * radians;
+  return Math.hypot(x, y) * 6371;
+}
+
+// The last device fix, rounded like the location it produced, so a later lookup can show
+// forecasts at once while the device finds a fresh position.
+const DEVICE_FIX_KEY = "skylens.device-fix.v1";
+const DEVICE_FIX_MAX_AGE = 30 * 24 * 60 * 60_000;
+
+function readDeviceFix() {
+  try {
+    const { latitude, longitude, timestamp } = JSON.parse(localStorage.getItem(DEVICE_FIX_KEY)) ?? {};
+    if (!Number.isFinite(latitude) || Math.abs(latitude) > 90 || !Number.isFinite(longitude) ||
+        Math.abs(longitude) > 180 || !(Date.now() - timestamp < DEVICE_FIX_MAX_AGE)) return null;
+    return { coords: { latitude, longitude }, timestamp };
+  } catch {
+    return null;
+  }
+}
+
+function rememberDeviceFix({ coords, timestamp }) {
+  try {
+    localStorage.setItem(DEVICE_FIX_KEY, JSON.stringify({
+      latitude: Number(coords.latitude.toFixed(3)), longitude: Number(coords.longitude.toFixed(3)), timestamp,
+    }));
+  } catch {
+    // Without storage, each visit waits for the device as before.
+  }
+}
+
+function forgetDeviceFix() {
+  try {
+    localStorage.removeItem(DEVICE_FIX_KEY);
+  } catch {}
 }
 
 let locationVersion = 0;
@@ -609,8 +693,8 @@ function chooseLocation(location) {
   $("detect-location").disabled = false;
   $("geo-status").textContent = "";
   const previous = preferences.location;
-  if (previous.latitude !== location.latitude || previous.longitude !== location.longitude ||
-      previous.countryCode !== location.countryCode || previous.timezone !== location.timezone) {
+  cancelRetries();
+  if (!samePlace(previous, location)) {
     for (const controller of state.pending.values()) controller.abort();
     state.pending.clear();
     state.results.clear();
@@ -632,7 +716,9 @@ $("favorites-only").addEventListener("click", () => {
   loadForecasts();
 });
 $("refresh").addEventListener("click", () => {
-  if (!isPending(inComparison())) loadForecasts(true);
+  if (isPending(inComparison())) return;
+  cancelRetries();
+  loadForecasts(true);
 });
 document.querySelector(".metric-picker").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-metric]");
@@ -683,6 +769,19 @@ function setupSearch() {
     message.textContent = note;
   }
 
+  // The version of the device location lookup still in progress, if any.
+  let lookup = null;
+  const locating = () => lookup !== null && lookup === locationVersion;
+
+  // The location note floats over the page, so let people dismiss it like a popover, but keep
+  // progress notes up until the lookup finishes.
+  document.addEventListener("pointerdown", (event) => {
+    if (!locating() && !event.target.closest("#geo-status, #detect-location")) $("geo-status").textContent = "";
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !locating()) $("geo-status").textContent = "";
+  });
+
   $("detect-location").addEventListener("click", () => {
     close();
     const status = $("geo-status");
@@ -691,39 +790,89 @@ function setupSearch() {
       return;
     }
     const version = ++locationVersion;
+    lookup = version;
     $("detect-location").disabled = true;
     status.textContent = "Finding your location…";
+    let shown = false;
+    const finish = () => {
+      if (lookup === version) lookup = null;
+    };
+
     function showPosition({ coords }, recent) {
+      shown = true;
+      input.value = "";
+      close();
       chooseLocation({ name: recent ? "Recent device location" : "Current location", region: "", country: "", countryCode: "",
         latitude: Number(coords.latitude.toFixed(3)), longitude: Number(coords.longitude.toFixed(3)),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
       announce(recent ? "Loading forecasts for your recent location." : "Loading forecasts for your current location.");
     }
-    navigator.geolocation.getCurrentPosition(position => {
-      if (version !== locationVersion) return;
-      input.value = "";
-      close();
-      const needsUpdate = Date.now() - position.timestamp > 5 * 60_000;
-      showPosition(position, needsUpdate);
-      if (needsUpdate) {
-        status.textContent = "Using your recent location while checking your current position…";
-        navigator.geolocation.getCurrentPosition(current => {
-          if (version === locationVersion) showPosition(current, false);
-        }, () => {
-          if (version !== locationVersion) return;
-          status.textContent = "Current position unavailable. Showing your recent location.";
-          // Keep the recent fix, but don't leave a "Recent" label that would persist across reloads.
-          preferences.location = { ...preferences.location, name: "Device location" };
-          persist();
-          render();
-        }, { maximumAge: 0, timeout: 12_000 });
+    // Keeps the coordinates (and the forecasts already loaded for them) while changing only the label.
+    function relabel(name) {
+      preferences.location = { ...preferences.location, name };
+      persist();
+      render();
+    }
+    // Shows a fix, returning whether it is fresh enough that no further check is needed.
+    function apply(position) {
+      const fresh = Date.now() - position.timestamp <= 5 * 60_000;
+      rememberDeviceFix(position);
+      // Fixes rarely match exactly. Refetching every source for a move smaller than the
+      // forecast grids would only make the user wait again.
+      if (shown && distanceKm(preferences.location, position.coords) < 1) {
+        if (fresh) relabel("Current location");
+      } else {
+        showPosition(position, !fresh);
       }
-    }, (error) => {
+      if (fresh) status.textContent = "";
+      return fresh;
+    }
+    function fail(error) {
       if (version !== locationVersion) return;
+      finish();
       $("detect-location").disabled = false;
+      if (shown) {
+        status.textContent = "Current position unavailable. Showing your recent location.";
+        // Keep the recent fix, but don't leave a "Recent" label that would persist across reloads.
+        relabel("Device location");
+        return;
+      }
+      if (error.code === 1) forgetDeviceFix();
       status.textContent = error.code === 1 ? "Location access was denied. Search for a city instead." :
         "Could not find your location. Try again or search for a city.";
-    }, { maximumAge: 30 * 60_000, timeout: 12_000 });
+    }
+    function checkCurrent() {
+      status.textContent = "Checking your current position…";
+      navigator.geolocation.getCurrentPosition(position => {
+        if (version !== locationVersion) return;
+        finish();
+        apply(position);
+      }, fail, { maximumAge: 0, timeout: 12_000 });
+    }
+
+    // A first fix can take the operating system several seconds. Accept any position the
+    // browser already holds, then confirm it with a fresh one.
+    navigator.geolocation.getCurrentPosition(position => {
+      if (version !== locationVersion) return;
+      if (apply(position)) finish();
+      else checkCurrent();
+    }, fail, { maximumAge: Infinity, timeout: 12_000 });
+
+    // The browser forgets positions when it restarts, so also show the last fix this site saw
+    // while the first one is found, if location access is still granted.
+    const remembered = readDeviceFix();
+    if (remembered) {
+      void navigator.permissions?.query({ name: "geolocation" }).then(({ state }) => {
+        // Skip it once the lookup has already succeeded or failed.
+        if (version !== locationVersion || shown || lookup !== version) return;
+        if (state !== "granted") {
+          forgetDeviceFix();
+          return;
+        }
+        showPosition(remembered, true);
+        status.textContent = "Checking your current position…";
+      }).catch(() => {});
+    }
   });
 
   async function search(query) {

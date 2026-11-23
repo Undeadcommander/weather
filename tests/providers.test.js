@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { HOUR } from "../shared/weather.js";
-import { normalizeOpenMeteo } from "../shared/open-meteo.js";
+import { fetchBrightSky, normalizeBrightSky } from "../shared/bright-sky.js";
+import { fetchOpenMeteo, normalizeOpenMeteo } from "../shared/open-meteo.js";
 import { createApp } from "../server/app.js";
 import { findLocations, normalizeMetNorway, normalizeNws } from "../server/providers.js";
 
@@ -87,6 +88,44 @@ test("Open-Meteo aligns precipitation probability to the beginning of the hour",
   assert.equal(rows[1].rain, null);
   assert.equal(rows[2].condition, "rain");
   assert.deepEqual(normalizeOpenMeteo({ hourly: {} }), []);
+});
+
+test("Bright Sky maps icons, estimates missing humidity from dew point and aligns rain chance", () => {
+  const stamp = (offset) => new Date(START + offset * HOUR).toISOString();
+  const rows = normalizeBrightSky({ weather: [
+    { timestamp: stamp(0), temperature: 20, dew_point: 20, relative_humidity: null, wind_speed: 12.5, icon: "partly-cloudy-night", precipitation_probability: null },
+    { timestamp: stamp(1), temperature: 10, dew_point: 2, relative_humidity: 70, wind_speed: 0, icon: "thunderstorm", precipitation_probability: 35 },
+    { timestamp: stamp(5), temperature: "warm", dew_point: 30, icon: "wind" },
+  ] });
+  assert.equal(rows[0].humidity, 100);
+  assert.equal(rows[0].rain, 35);
+  assert.equal(rows[0].night, true);
+  assert.equal(rows[0].condition, "partlyCloudy");
+  assert.equal(rows[0].wind, 12.5);
+  assert.deepEqual([rows[1].humidity, rows[1].rain, rows[1].condition, rows[1].wind], [70, null, "thunder", 0]);
+  assert.deepEqual([rows[2].temp, rows[2].humidity, rows[2].condition], [null, null, null]);
+  assert.deepEqual(normalizeBrightSky({}), []);
+});
+
+test("Open-Meteo and Bright Sky report unsupported places instead of failing", async (context) => {
+  const original = globalThis.fetch;
+  context.after(() => { globalThis.fetch = original; });
+  const place = { latitude: 35.68, longitude: 139.69 };
+  const reply = (body, status) => () => Promise.resolve(Response.json(body, { status }));
+
+  globalThis.fetch = reply({ error: true, reason: "No data is available for this location" }, 400);
+  const outside = await fetchOpenMeteo(place, undefined, { id: "hrrr", model: "gfs_hrrr" });
+  assert.deepEqual([outside.source, outside.status, outside.rows], ["hrrr", "unsupported", []]);
+
+  globalThis.fetch = reply({ error: true, reason: "Invalid value: Cannot initialize MultiDomains" }, 400);
+  await assert.rejects(fetchOpenMeteo(place, undefined, { id: "hrrr", model: "gfs_hrrr" }), /unavailable/);
+  globalThis.fetch = reply({ error: true, reason: "No data is available for this location" }, 400);
+  await assert.rejects(fetchOpenMeteo(place), /unavailable/);
+
+  globalThis.fetch = reply({ detail: "No weather data" }, 404);
+  assert.equal((await fetchBrightSky(place)).status, "unsupported");
+  globalThis.fetch = reply({}, 500);
+  await assert.rejects(fetchBrightSky(place), /unavailable/);
 });
 
 test("MET Norway converts m/s and preserves unavailable hourly fields", () => {
@@ -345,7 +384,7 @@ test("static responses are allowlisted, revalidatable, and carry security header
   assert.equal(response.headers.get("X-Frame-Options"), "DENY");
   assert.equal(response.headers.get("Referrer-Policy"), "no-referrer");
   assert.match(response.headers.get("Content-Security-Policy"), /frame-ancestors 'none'/);
-  assert.match(response.headers.get("Content-Security-Policy"), /connect-src 'self' https:\/\/api\.open-meteo\.com;/);
+  assert.match(response.headers.get("Content-Security-Policy"), /connect-src 'self' https:\/\/api\.open-meteo\.com https:\/\/api\.brightsky\.dev;/);
   assert.equal(response.headers.has("Access-Control-Allow-Origin"), false);
   const head = await request(app, "/", { method: "HEAD" });
   assert.equal(head.status, 200);

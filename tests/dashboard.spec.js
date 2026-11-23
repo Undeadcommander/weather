@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base } from "@playwright/test";
 import { DEFAULT_LOCATION, HOUR, SOURCES } from "../shared/weather.js";
+import { BRIGHT_SKY_ORIGIN } from "../shared/bright-sky.js";
 import { OPEN_METEO_ORIGIN } from "../shared/open-meteo.js";
 
 const START = Date.parse("2026-11-22T17:00:00Z");
@@ -50,32 +51,44 @@ function openMeteoFixture({ rows }) {
   } };
 }
 
+function brightSkyFixture({ rows }) {
+  return { weather: rows.map(({ t, temp, wind, humidity, rain }) => ({
+    timestamp: new Date(t).toISOString(), temperature: temp, wind_speed: wind, relative_humidity: humidity,
+    precipitation_probability: rain, icon: "cloudy",
+  })) };
+}
+
 async function mockDashboard(page, { forecast, cities } = {}) {
   await page.clock.setFixedTime(START + 15_000);
   const requests = [];
   async function routeForecast(route) {
     const url = new URL(route.request().url());
-    const isDirect = url.origin === OPEN_METEO_ORIGIN;
-    const source = isDirect
+    const isBrightSky = url.origin === BRIGHT_SKY_ORIGIN;
+    const isDirect = isBrightSky || url.origin === OPEN_METEO_ORIGIN;
+    const source = isBrightSky ? "mosmix" : isDirect
       ? SOURCES.find(({ model }) => model && model === url.searchParams.get("models"))?.id ?? "open-meteo"
       : url.searchParams.get("source");
-    const latitude = Number(url.searchParams.get(isDirect ? "latitude" : "lat"));
+    const latitude = Number(url.searchParams.get(url.origin === OPEN_METEO_ORIGIN ? "latitude" : "lat"));
     requests.push({ source, latitude });
     if (forecast && await forecast(route, source)) return;
     const data = fixture(source, latitude);
     if (isDirect) {
-      expect(url.searchParams.get("past_days")).toBe("1");
+      if (!isBrightSky) expect(url.searchParams.get("past_days")).toBe("1");
       const headers = route.request().headers();
       expect(headers.authorization).toBeUndefined();
       expect(headers.cookie).toBeUndefined();
       expect(headers.referer).toBeUndefined();
-      await route.fulfill({ json: openMeteoFixture(data), headers: { "Access-Control-Allow-Origin": "*" } });
+      await route.fulfill({
+        json: isBrightSky ? brightSkyFixture(data) : openMeteoFixture(data),
+        headers: { "Access-Control-Allow-Origin": "*" },
+      });
     } else {
       await route.fulfill({ json: data });
     }
   }
   await page.route("**/api/weather?*", routeForecast);
   await page.route(`${OPEN_METEO_ORIGIN}/v1/forecast?*`, routeForecast);
+  await page.route(`${BRIGHT_SKY_ORIGIN}/weather?*`, routeForecast);
   await page.route("**/api/locations?*", async (route) => {
     const query = new URL(route.request().url()).searchParams.get("q");
     if (cities && await cities(route, query)) return;
@@ -97,7 +110,7 @@ test("compares individual models in the Worker build and preserves model choices
     return true;
   } });
   await initialForecast(page);
-  const models = SOURCES.filter(({ model }) => model);
+  const models = SOURCES.filter(({ model, provider }) => model || provider);
   for (const { name } of models) await page.getByRole("switch", { name: `Compare ${name}`, exact: true }).check();
   await expect(page.locator("#source-count")).toHaveText(`${SOURCES.length} reporting`);
   expect(gemRequests).toBe(2);
@@ -241,6 +254,43 @@ test("starts the forecast difference at the current hour and follows chart hover
   await page.getByRole("button", { name: "Tomorrow", exact: true }).click();
   expect(await shading()).toEqual([0, 0]);
   expect(errors).toEqual([]);
+});
+
+test.describe("on a touch phone", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("dragging a finger across the chart scrubs hours like hover, and a tap selects", async ({ page, browserName }) => {
+    test.skip(browserName !== "chromium", "Touch drags are dispatched through the Chrome DevTools Protocol");
+    await mockDashboard(page);
+    await initialForecast(page);
+    const canvas = page.locator("#chart");
+    await canvas.scrollIntoViewIfNeeded();
+    const box = await canvas.boundingBox();
+    const at = hour => ({ x: box.x + 42 + (box.width - 58) * hour / 23, y: box.y + box.height / 2 });
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (type, point) => cdp.send("Input.dispatchTouchEvent", {
+      type, touchPoints: point ? [{ ...point, id: 1 }] : [],
+    });
+    const tooltip = page.locator("#chart-tooltip");
+    await expect(page.locator("#detail-time")).toContainText("9 AM PST");
+
+    await touch("touchStart", at(12));
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText("12 PM");
+    await expect(page.locator("#hero-time")).toContainText("12 PM");
+    for (let hour = 12.25; hour <= 18; hour += .25) await touch("touchMove", at(hour));
+    await expect(tooltip).toContainText("6 PM");
+    await expect(page.locator("#hero-time")).toContainText("6 PM");
+    await expect(page.locator("#gap-note")).toContainText("6 PM");
+    await touch("touchEnd");
+    await expect(tooltip).toBeHidden();
+    await expect(page.locator("#hero-time")).toContainText("9 AM");
+    await expect(page.locator("#detail-time")).toContainText("9 AM PST");
+
+    await canvas.tap({ position: { x: 42 + (box.width - 58) * 14 / 23, y: box.height / 2 } });
+    await expect(page.locator("#detail-time")).toContainText("2 PM PST");
+    await expect(tooltip).toBeHidden();
+  });
 });
 
 test("switches rain, wind, and temperature and handles missing rain probability", async ({ page }) => {
@@ -546,6 +596,42 @@ test("shows partial data promptly, retries failed sources and labels cached data
   }
 });
 
+test("automatically retries an unavailable source until it recovers", async ({ page }) => {
+  let metRequests = 0;
+  await mockDashboard(page, { forecast: async (route, source) => {
+    if (source !== "met-norway" || ++metRequests > 1) return false;
+    await route.fulfill({ status: 503, json: {} });
+    return true;
+  } });
+  const status = page.locator('[data-source="met-norway"] .source-status');
+  await expect(status).toHaveText("Temporarily unavailable");
+  await expect(status).toHaveText("Forecast available");
+  await initialForecast(page);
+  expect(metRequests).toBe(2);
+});
+
+test("stops retrying an unavailable source after three attempts", async ({ page }) => {
+  await page.clock.install({ time: START + 15_000 });
+  let metRequests = 0;
+  await mockDashboard(page, { forecast: async (route, source) => {
+    if (source !== "met-norway") return false;
+    metRequests++;
+    await route.fulfill({ status: 503, json: {} });
+    return true;
+  } });
+  const status = page.locator('[data-source="met-norway"] .source-status');
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    await expect.poll(() => metRequests).toBe(attempt);
+    await expect(status).toHaveText("Temporarily unavailable");
+    await page.clock.fastForward(10_000);
+  }
+  await page.clock.fastForward(60_000);
+  await expect(status).toHaveText("Temporarily unavailable");
+  expect(metRequests).toBe(4);
+  await page.getByRole("button", { name: "Refresh forecasts" }).click();
+  await expect.poll(() => metRequests).toBe(5);
+});
+
 test("recovers from a total provider outage and unavailable browser storage", async ({ page }) => {
   let healthy = false;
   await page.addInitScript(() => Object.defineProperty(window, "localStorage", {
@@ -618,6 +704,100 @@ for (const selectCity of [false, true]) {
     }
   });
 }
+
+test("keeps loaded forecasts when a fresh device fix barely moves", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "geolocation", { value: {
+      getCurrentPosition(success, _failure, { maximumAge }) {
+        const age = 12 * 60_000;
+        if (maximumAge >= age) {
+          success({ coords: { latitude: 42.36, longitude: -71.06 }, timestamp: Date.now() - age });
+        } else {
+          // About 200 m away: typical jitter between two fixes in the same place.
+          window.finishLocationCheck = () => success({
+            coords: { latitude: 42.3615, longitude: -71.0581 }, timestamp: Date.now(),
+          });
+        }
+      },
+    } });
+  });
+  const requests = await mockDashboard(page);
+  await initialForecast(page);
+  const heroTop = async () => (await page.locator(".hero").boundingBox()).y;
+  const before = await heroTop();
+  await page.getByRole("button", { name: "Use my location" }).click();
+  await expect(page.locator("#hero-location")).toHaveText("Recent device location");
+  await expect(page.locator("#geo-status")).toHaveText("Checking your current position…");
+  await expect(page.locator("#geo-status")).toBeVisible();
+  expect(await heroTop()).toBe(before);
+  await initialForecast(page);
+  const count = requests.length;
+  await page.evaluate(() => window.finishLocationCheck());
+  await expect(page.locator("#hero-location")).toHaveText("Current location");
+  await expect(page.locator("#geo-status")).toHaveText("");
+  await initialForecast(page);
+  expect(requests).toHaveLength(count);
+});
+
+for (const permission of ["granted", "prompt"]) {
+  test(`${permission === "granted" ? "shows" : "skips"} the remembered device fix while a slow first fix is ${permission === "granted" ? "found" : "requested again"}`, async ({ page }) => {
+    await page.addInitScript((state) => {
+      localStorage.setItem("skylens.device-fix.v1", JSON.stringify({ latitude: 42.36, longitude: -71.06, timestamp: Date.now() - 86_400_000 }));
+      Object.defineProperty(navigator, "permissions", { value: { query: async () => ({ state }) } });
+      // No cached position: the first fix only arrives when the test finishes it.
+      Object.defineProperty(navigator, "geolocation", { value: {
+        getCurrentPosition(success) {
+          window.finishLocationCheck = () => success({ coords: { latitude: 42.3616, longitude: -71.0581 }, timestamp: Date.now() });
+        },
+      } });
+    }, permission);
+    const requests = await mockDashboard(page);
+    await initialForecast(page);
+    await page.getByRole("button", { name: "Use my location" }).click();
+    if (permission === "granted") {
+      await expect(page.locator("#hero-location")).toHaveText("Recent device location");
+      await expect(page.locator("#geo-status")).toHaveText("Checking your current position…");
+      await initialForecast(page);
+      const count = requests.length;
+      expect(requests.filter(request => request.latitude === 42.36)).toHaveLength(3);
+      await page.evaluate(() => window.finishLocationCheck());
+      await expect(page.locator("#hero-location")).toHaveText("Current location");
+      await expect(page.locator("#geo-status")).toHaveText("");
+      expect(requests).toHaveLength(count);
+    } else {
+      await expect(page.locator("#geo-status")).toHaveText("Finding your location…");
+      await expect.poll(() => page.evaluate(() => localStorage.getItem("skylens.device-fix.v1"))).toBeNull();
+      expect(requests.some(request => request.latitude === 42.36)).toBe(false);
+      await page.evaluate(() => window.finishLocationCheck());
+      await expect(page.locator("#hero-location")).toHaveText("Current location");
+      await expect.poll(() => requests.some(request => request.latitude === 42.362)).toBe(true);
+    }
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("skylens.device-fix.v1")));
+    expect(saved).toMatchObject({ latitude: 42.362, longitude: -71.058 });
+  });
+}
+
+test("location errors float without moving the page and can be dismissed", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "geolocation", { value: {
+      getCurrentPosition(_success, failure) { failure({ code: 1 }); },
+    } });
+  });
+  await mockDashboard(page);
+  await initialForecast(page);
+  const heroTop = async () => (await page.locator(".hero").boundingBox()).y;
+  const before = await heroTop();
+  await page.getByRole("button", { name: "Use my location" }).click();
+  await expect(page.locator("#geo-status")).toHaveText("Location access was denied. Search for a city instead.");
+  expect(await heroTop()).toBe(before);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#geo-status")).toBeHidden();
+  await page.getByRole("button", { name: "Use my location" }).click();
+  await expect(page.locator("#geo-status")).toBeVisible();
+  await page.locator("h1").click();
+  await expect(page.locator("#geo-status")).toBeHidden();
+  expect(await heroTop()).toBe(before);
+});
 
 test("navigation and source links work, with no automated accessibility violations", async ({ page }) => {
   await mockDashboard(page);

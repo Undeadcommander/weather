@@ -61,7 +61,7 @@ export function normalizePreferences(value) {
     Number.isFinite(saved.longitude) && Math.abs(saved.longitude) <= 180 && validTimeZone(saved.timezone);
   return {
     unit: value?.unit === "C" ? "C" : "F",
-    enabled: SOURCES.filter(({ id, model }) => Array.isArray(value?.enabled) ? value.enabled.includes(id) : !model).map(({ id }) => id),
+    enabled: SOURCES.filter(({ id, model, provider }) => Array.isArray(value?.enabled) ? value.enabled.includes(id) : !model && !provider).map(({ id }) => id),
     favorites: ids.filter((id) => Array.isArray(value?.favorites) && value.favorites.includes(id)),
     favoritesOnly: value?.favoritesOnly === true,
     location: locationIsValid ? saved : DEFAULT_LOCATION,

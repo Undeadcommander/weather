@@ -16,6 +16,25 @@ const LINE_STYLES = {
   aicon: { color: "--aicon", dash: [1, 4] },
   aigfs: { color: "--aigfs", dash: [12, 3, 2, 3, 2, 3] },
   hgefs: { color: "--hgefs", dash: [5, 3, 5, 7] },
+  ecmwf9: { color: "--ecmwf9", dash: [4, 2] },
+  mosmix: { color: "--mosmix", dash: [11, 3] },
+  hrrr: { color: "--hrrr", dash: [2, 2] },
+  nbm: { color: "--nbm", dash: [7, 2, 2, 2] },
+  rdps: { color: "--rdps", dash: [18, 4] },
+  hrdps: { color: "--hrdps", dash: [6, 2, 1, 2] },
+  hrdpsw: { color: "--hrdpsw", dash: [3, 6] },
+  icond2: { color: "--icond2", dash: [9, 5] },
+  iconeu: { color: "--iconeu", dash: [4, 3, 1, 3, 1, 3] },
+  arome: { color: "--arome", dash: [13, 3, 1, 3] },
+  aromehd: { color: "--aromehd", dash: [2, 3] },
+  arpege: { color: "--arpege", dash: [15, 3, 5, 3] },
+  ukv: { color: "--ukv", dash: [8, 2] },
+  knmi: { color: "--knmi", dash: [1, 2] },
+  dmi: { color: "--dmi", dash: [10, 2, 2, 2, 2, 2] },
+  nordic: { color: "--nordic", dash: [20, 4] },
+  "icon-ch": { color: "--icon-ch", dash: [5, 5] },
+  icon2i: { color: "--icon2i", dash: [3, 2, 8, 2] },
+  msm: { color: "--msm", dash: [6, 4, 2, 4] },
 };
 
 function chartScale(metric, values) {
@@ -177,17 +196,61 @@ export function createChart(plot, tooltip, onSelect, onHover) {
     onHover(null);
   }
 
-  canvas.addEventListener("pointermove", (event) => {
-    if (event.pointerType === "touch") return;
-    const index = indexAt(event.clientX);
+  function hoverAt(clientX) {
+    const index = indexAt(clientX);
     if (index === null || index === hovered) return;
     hovered = index;
     redraw();
     showTooltip(index);
     onHover(model.times[index]);
+  }
+
+  // Touch scrubbing: a finger on the chart acts like a hovering mouse. The canvas keeps
+  // touch-action: pan-y, so a vertical swipe still scrolls the page (the browser then
+  // cancels the pointer) while a horizontal drag moves the line across the hours.
+  // A touch that barely moves is a tap and selects the hour on release; touch selection
+  // doesn't wait for the synthesized click, which browsers may drop (e.g. after a flick).
+  let touchId = null;
+  let touchStartX = 0;
+  let scrubbed = false;
+  let touchHandled = false;
+  canvas.addEventListener("pointerdown", (event) => {
+    touchHandled = false;
+    if (event.pointerType !== "touch" || !event.isPrimary) return;
+    touchId = event.pointerId;
+    touchStartX = event.clientX;
+    scrubbed = false;
+    hoverAt(event.clientX);
   });
-  canvas.addEventListener("pointerleave", hideTooltip);
+  canvas.addEventListener("pointermove", (event) => {
+    if (event.pointerType === "touch") {
+      if (event.pointerId !== touchId) return;
+      if (Math.abs(event.clientX - touchStartX) > 10) scrubbed = true;
+    }
+    hoverAt(event.clientX);
+  });
+  canvas.addEventListener("pointerup", (event) => {
+    if (event.pointerId !== touchId) return;
+    touchId = null;
+    touchHandled = true;
+    const index = scrubbed ? null : indexAt(event.clientX);
+    hideTooltip();
+    if (index !== null) onSelect(model.times[index]);
+  });
+  canvas.addEventListener("pointercancel", (event) => {
+    if (event.pointerId !== touchId) return;
+    touchId = null;
+    touchHandled = true;
+    hideTooltip();
+  });
+  canvas.addEventListener("pointerleave", (event) => {
+    if (event.pointerType !== "touch") hideTooltip();
+  });
+  canvas.addEventListener("contextmenu", (event) => {
+    if (touchId !== null) event.preventDefault();
+  });
   canvas.addEventListener("click", (event) => {
+    if (touchHandled) return;
     const index = indexAt(event.clientX);
     if (index !== null) onSelect(model.times[index]);
   });

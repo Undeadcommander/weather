@@ -37,6 +37,25 @@
   --aicon: #734378;
   --aigfs: #394d8a;
   --hgefs: #8c3d54;
+  --ecmwf9: #8c4521;
+  --mosmix: #1f845f;
+  --hrrr: #93259d;
+  --nbm: #677c1d;
+  --rdps: #21578c;
+  --hrdps: #ae2943;
+  --hrdpsw: #1f8427;
+  --icond2: #642dbe;
+  --iconeu: #8c6921;
+  --arome: #1d7c79;
+  --aromehd: #9d257f;
+  --arpege: #4d841f;
+  --ukv: #21338c;
+  --knmi: #ae3a29;
+  --dmi: #1f8449;
+  --nordic: #952dbe;
+  --icon-ch: #74741b;
+  --icon2i: #277fa5;
+  --msm: #9d2557;
   --radius: 20px;
   --accent-edge: #c0b4ea;
   --accent-edge-soft: #d5c9f4;
@@ -220,7 +239,24 @@ ul { list-style: none; padding: 0; }
   box-shadow: .85rem -.5rem 0 -.02rem var(--swatch-accent);
 }
 .units { justify-self: end; }
-#geo-status:not(:empty) { margin: 0 0 1rem; color: var(--muted); }
+/* Floats under the location tools so status changes never shift the page below. */
+#geo-status {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + .5rem);
+  inset-inline-end: 0;
+  width: max-content;
+  max-width: min(22rem, 100%);
+  margin: 0;
+  padding: .55rem .75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 10px 24px #211a3f26;
+  color: var(--muted);
+  font-size: .9rem;
+}
+#geo-status:empty { display: none; }
 [data-source="gfs"] { --source-color: var(--gfs); --source-fill: #e8f2ff; }
 [data-source="icon"] { --source-color: var(--icon); --source-fill: #fcebf2; }
 [data-source="ecmwf"] { --source-color: var(--ecmwf); --source-fill: #eff5e4; }
@@ -233,6 +269,25 @@ ul { list-style: none; padding: 0; }
 [data-source="aicon"] { --source-color: var(--aicon); --source-fill: #f4e9f6; }
 [data-source="aigfs"] { --source-color: var(--aigfs); --source-fill: #e8edff; }
 [data-source="hgefs"] { --source-color: var(--hgefs); --source-fill: #fbe9ee; }
+[data-source="ecmwf9"] { --source-color: var(--ecmwf9); --source-fill: #fcefe8; }
+[data-source="mosmix"] { --source-color: var(--mosmix); --source-fill: #e8fcf5; }
+[data-source="hrrr"] { --source-color: var(--hrrr); --source-fill: #fbe8fc; }
+[data-source="nbm"] { --source-color: var(--nbm); --source-fill: #f8fce8; }
+[data-source="rdps"] { --source-color: var(--rdps); --source-fill: #e8f2fc; }
+[data-source="hrdps"] { --source-color: var(--hrdps); --source-fill: #fce8ec; }
+[data-source="hrdpsw"] { --source-color: var(--hrdpsw); --source-fill: #e8fcea; }
+[data-source="icond2"] { --source-color: var(--icond2); --source-fill: #f0e8fc; }
+[data-source="iconeu"] { --source-color: var(--iconeu); --source-fill: #fcf6e8; }
+[data-source="arome"] { --source-color: var(--arome); --source-fill: #e8fcfc; }
+[data-source="aromehd"] { --source-color: var(--aromehd); --source-fill: #fce8f7; }
+[data-source="arpege"] { --source-color: var(--arpege); --source-fill: #f1fce8; }
+[data-source="ukv"] { --source-color: var(--ukv); --source-fill: #e8ebfc; }
+[data-source="knmi"] { --source-color: var(--knmi); --source-fill: #fcebe8; }
+[data-source="dmi"] { --source-color: var(--dmi); --source-fill: #e8fcf1; }
+[data-source="nordic"] { --source-color: var(--nordic); --source-fill: #f7e8fc; }
+[data-source="icon-ch"] { --source-color: var(--icon-ch); --source-fill: #fcfce8; }
+[data-source="icon2i"] { --source-color: var(--icon2i); --source-fill: #e8f6fc; }
+[data-source="msm"] { --source-color: var(--msm); --source-fill: #fce8f1; }
 .units button { min-width: 40px; }
 .page { max-width: 1360px; margin: 0 auto; padding: 2rem 2.5rem 0; }
 .page-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: end; margin-bottom: 1.4rem; }
@@ -469,7 +524,7 @@ ul { list-style: none; padding: 0; }
 .outlook-condition[data-weather="thunder"] { --weather-color: var(--purple); }
 .plot-wrap { position: relative; flex: none; display: flex; height: clamp(16rem, 32vw, 20rem); min-width: 0; margin-top: .45rem; }
 .plot { position: relative; width: 100%; height: 100%; border-radius: 8px; }
-.plot canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; }
+.plot canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 .plot-empty {
   width: 100%;
   align-self: center;
@@ -746,6 +801,25 @@ tbody th { font-weight: 800; }
   --aicon: #da9bde;
   --aigfs: #a4b6ff;
   --hgefs: #f8a2b8;
+  --ecmwf9: #eba684;
+  --mosmix: #84ebc5;
+  --hrrr: #e284eb;
+  --nbm: #d5eb84;
+  --rdps: #84b8eb;
+  --hrdps: #eb8499;
+  --hrdpsw: #84eb8d;
+  --icond2: #ac84eb;
+  --iconeu: #ebc984;
+  --arome: #84ebe8;
+  --aromehd: #eb84d1;
+  --arpege: #b2eb84;
+  --ukv: #8495eb;
+  --knmi: #eb9284;
+  --dmi: #84ebaf;
+  --nordic: #ce84eb;
+  --icon-ch: #ebeb84;
+  --icon2i: #84cceb;
+  --msm: #eb84af;
   --chart-selection: #65517f;
   --chart-past: rgb(0 0 0 / 24%);
   --insight-from: #302342;

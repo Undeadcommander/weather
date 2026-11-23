@@ -50,6 +50,13 @@ async function openPages(page, { failMet = false, badNws = false } = {}) {
         weather_code: Array(hours).fill(3), is_day: Array(hours).fill(1),
       } });
     }
+    if (url.origin === "https://api.brightsky.dev") {
+      expect(request.headers().referer).toBeUndefined();
+      return reply({ weather: Array.from({ length: 73 }, (_, index) => ({
+        timestamp: new Date(START + index * HOUR).toISOString(), temperature: 12, wind_speed: 10,
+        relative_humidity: 80, precipitation_probability: 20, icon: "cloudy",
+      })) });
+    }
     if (url.origin === "https://api.met.no") {
       expect(request.headers().referer).toBe(`${ORIGIN}/`);
       expect(url.searchParams.get("lat")).toMatch(/^-?\d+\.\d{4}$/);
@@ -87,7 +94,9 @@ async function openPages(page, { failMet = false, badNws = false } = {}) {
 test("Pages can compare all individual models through their reported forecast ranges", async ({ page }) => {
   const { requests, errors } = await openPages(page);
   const models = SOURCES.filter(({ model }) => model);
-  for (const { name } of models) await page.getByRole("switch", { name: `Compare ${name}` }).check();
+  for (const { name } of SOURCES.filter(({ model, provider }) => model || provider)) {
+    await page.getByRole("switch", { name: `Compare ${name}`, exact: true }).check();
+  }
   await expect(page.locator("#source-count")).toHaveText(`${SOURCES.length} reporting`);
   await expect(page.locator("#legend li")).toHaveCount(SOURCES.length);
   await expect(page.locator("#details tbody tr")).toHaveCount(SOURCES.length);

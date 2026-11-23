@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import worker from "../dist/server/index.js";
+import { fetchBrightSky } from "../shared/bright-sky.js";
 import { fetchOpenMeteo } from "../shared/open-meteo.js";
 import { SOURCES } from "../shared/weather.js";
 
@@ -7,6 +8,18 @@ const origin = "https://skylens.test";
 const fetchApp = (path, init) => worker.fetch(new Request(origin + path, init));
 const sf = { lat: 37.7749, lon: -122.4194 };
 const london = { lat: 51.5074, lon: -0.1278 };
+// Regional models are checked in a city inside their domain.
+const homes = {
+  hrrr: ["Chicago", { lat: 41.88, lon: -87.63 }], nbm: ["Chicago", { lat: 41.88, lon: -87.63 }],
+  rdps: ["Toronto", { lat: 43.65, lon: -79.38 }], hrdps: ["Toronto", { lat: 43.65, lon: -79.38 }],
+  hrdpsw: ["Vancouver", { lat: 49.28, lon: -123.12 }], icond2: ["Berlin", { lat: 52.52, lon: 13.4 }],
+  iconeu: ["Paris", { lat: 48.85, lon: 2.35 }], arome: ["Paris", { lat: 48.85, lon: 2.35 }],
+  aromehd: ["Paris", { lat: 48.85, lon: 2.35 }], arpege: ["Paris", { lat: 48.85, lon: 2.35 }],
+  ukv: ["London", london], knmi: ["Amsterdam", { lat: 52.37, lon: 4.9 }],
+  dmi: ["Copenhagen", { lat: 55.68, lon: 12.57 }], nordic: ["Oslo", { lat: 59.91, lon: 10.75 }],
+  "icon-ch": ["Zurich", { lat: 47.37, lon: 8.54 }], icon2i: ["Rome", { lat: 41.9, lon: 12.5 }],
+  msm: ["Tokyo", { lat: 35.68, lon: 139.69 }],
+};
 
 async function check(label, path, verify) {
   const start = performance.now();
@@ -32,9 +45,10 @@ async function forecast(location, source, point, status = "ok") {
   }
   const label = `${location} · ${source}`;
   const feed = SOURCES.find(({ id }) => id === source);
-  if (source === "open-meteo" || feed?.model) {
+  if (source === "open-meteo" || feed?.model || feed?.provider) {
     const start = performance.now();
-    const data = await fetchOpenMeteo({ latitude: point.lat, longitude: point.lon }, undefined, feed);
+    const fetchFeed = feed?.provider === "brightsky" ? fetchBrightSky : fetchOpenMeteo;
+    const data = await fetchFeed({ latitude: point.lat, longitude: point.lon }, undefined, feed);
     verify(data);
     console.log(`${label} passed in ${Math.round(performance.now() - start)} ms`);
     return data;
@@ -56,9 +70,12 @@ const results = await Promise.allSettled([
 ]);
 
 // Check individual models in sequence to avoid bursting the public API.
-for (const { id } of SOURCES.filter(({ model }) => model)) {
-  results.push(...await Promise.allSettled([forecast("San Francisco", id, sf)]));
+for (const { id } of SOURCES.filter(({ model, provider }) => model || provider)) {
+  const [city, point] = homes[id] ?? ["San Francisco", sf];
+  results.push(...await Promise.allSettled([forecast(city, id, point)]));
 }
+// A regional model outside its domain reports no coverage instead of failing.
+results.push(...await Promise.allSettled([forecast("Tokyo", "hrrr", { lat: 35.68, lon: 139.69 }, "unsupported")]));
 
 for (const result of results) {
   if (result.status === "rejected") {
