@@ -69,7 +69,7 @@ export const CONDITIONS = {
   partlyCloudy: { label: "Partly cloudy", icon: "partlyCloudy" },
   cloudy: { label: "Cloudy", icon: "cloud" },
   fog: { label: "Fog", icon: "fog" },
-  drizzle: { label: "Drizzle", icon: "rain" },
+  drizzle: { label: "Drizzle", icon: "drizzle" },
   rain: { label: "Rain", icon: "rain" },
   sleet: { label: "Sleet", icon: "snow" },
   snow: { label: "Snow", icon: "snow" },
