@@ -418,7 +418,6 @@ ul { list-style: none; padding: 0; }
   pointer-events: none;
   opacity: 0;
   transition: opacity .2s ease;
-  border-radius: 0 0 var(--radius) var(--radius);
   background: linear-gradient(to bottom, transparent, var(--surface));
 }
 .source-list-wrap:has(.source-list.has-overflow)::after,
