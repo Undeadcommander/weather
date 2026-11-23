@@ -258,8 +258,39 @@ function renderSources(active, availableSources, metric) {
   }
   $("source-count").textContent = `${availableSources.size} reporting`;
   $("favorites-only").setAttribute("aria-pressed", String(preferences.favoritesOnly));
-  $("refresh").setAttribute("aria-busy", String(isPending(active)));
-  $("refresh").setAttribute("aria-disabled", String(isPending(active)));
+  const busy = isPending(active);
+  $("refresh").setAttribute("aria-busy", String(busy));
+  $("refresh").setAttribute("aria-disabled", String(busy));
+  if (busy) $("refresh").classList.add("spinning");
+}
+
+// Stop the refresh icon only at the end of a full turn, so quick refreshes still show one.
+$("refresh").querySelector(".icon").addEventListener("animationiteration", () => {
+  if ($("refresh").getAttribute("aria-busy") !== "true") $("refresh").classList.remove("spinning");
+});
+
+// Progress notes for quick location lookups would flash on and off, so they appear only after
+// a short wait, and once shown, stay up long enough to read before clearing.
+const geoStatus = { timer: 0, shownAt: 0 };
+function setGeoStatus(text, { progress = false } = {}) {
+  const element = $("geo-status");
+  clearTimeout(geoStatus.timer);
+  const progressShown = geoStatus.shownAt > 0;
+  if (progress) {
+    if (progressShown) element.textContent = text;
+    else geoStatus.timer = setTimeout(() => {
+      element.textContent = text;
+      geoStatus.shownAt = performance.now();
+    }, 400);
+    return;
+  }
+  const show = () => {
+    element.textContent = text;
+    geoStatus.shownAt = 0;
+  };
+  const hold = text === "" && progressShown ? geoStatus.shownAt + 900 - performance.now() : 0;
+  if (hold > 0) geoStatus.timer = setTimeout(show, hold);
+  else show();
 }
 
 // Follows the hovered chart hour when there is one, otherwise the selected hour.
@@ -691,7 +722,7 @@ function forgetDeviceFix() {
 let locationVersion = 0;
 function chooseLocation(location) {
   $("detect-location").disabled = false;
-  $("geo-status").textContent = "";
+  setGeoStatus("");
   const previous = preferences.location;
   cancelRetries();
   if (!samePlace(previous, location)) {
@@ -717,6 +748,7 @@ $("favorites-only").addEventListener("click", () => {
 });
 $("refresh").addEventListener("click", () => {
   if (isPending(inComparison())) return;
+  $("refresh").classList.add("spinning");
   cancelRetries();
   loadForecasts(true);
 });
@@ -776,23 +808,22 @@ function setupSearch() {
   // The location note floats over the page, so let people dismiss it like a popover, but keep
   // progress notes up until the lookup finishes.
   document.addEventListener("pointerdown", (event) => {
-    if (!locating() && !event.target.closest("#geo-status, #detect-location")) $("geo-status").textContent = "";
+    if (!locating() && !event.target.closest("#geo-status, #detect-location")) setGeoStatus("");
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !locating()) $("geo-status").textContent = "";
+    if (event.key === "Escape" && !locating()) setGeoStatus("");
   });
 
   $("detect-location").addEventListener("click", () => {
     close();
-    const status = $("geo-status");
     if (!navigator.geolocation) {
-      status.textContent = "Location detection is unavailable. Search for a city instead.";
+      setGeoStatus("Location detection is unavailable. Search for a city instead.");
       return;
     }
     const version = ++locationVersion;
     lookup = version;
     $("detect-location").disabled = true;
-    status.textContent = "Finding your location…";
+    setGeoStatus("Finding your location…", { progress: true });
     let shown = false;
     const finish = () => {
       if (lookup === version) lookup = null;
@@ -824,7 +855,7 @@ function setupSearch() {
       } else {
         showPosition(position, !fresh);
       }
-      if (fresh) status.textContent = "";
+      if (fresh) setGeoStatus("");
       return fresh;
     }
     function fail(error) {
@@ -832,17 +863,17 @@ function setupSearch() {
       finish();
       $("detect-location").disabled = false;
       if (shown) {
-        status.textContent = "Current position unavailable. Showing your recent location.";
+        setGeoStatus("Current position unavailable. Showing your recent location.");
         // Keep the recent fix, but don't leave a "Recent" label that would persist across reloads.
         relabel("Device location");
         return;
       }
       if (error.code === 1) forgetDeviceFix();
-      status.textContent = error.code === 1 ? "Location access was denied. Search for a city instead." :
-        "Could not find your location. Try again or search for a city.";
+      setGeoStatus(error.code === 1 ? "Location access was denied. Search for a city instead." :
+        "Could not find your location. Try again or search for a city.");
     }
     function checkCurrent() {
-      status.textContent = "Checking your current position…";
+      setGeoStatus("Checking your current position…", { progress: true });
       navigator.geolocation.getCurrentPosition(position => {
         if (version !== locationVersion) return;
         finish();
@@ -870,7 +901,7 @@ function setupSearch() {
           return;
         }
         showPosition(remembered, true);
-        status.textContent = "Checking your current position…";
+        setGeoStatus("Checking your current position…", { progress: true });
       }).catch(() => {});
     }
   });
