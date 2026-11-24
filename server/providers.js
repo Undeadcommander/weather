@@ -51,8 +51,10 @@ function metCondition(symbol) {
 function nwsCondition(value) {
   if (typeof value !== "string") return null;
   const condition = value.toLowerCase();
+  if (/hail/.test(condition)) return "hail";
   if (/thunder/.test(condition)) return "thunder";
-  if (/sleet|wintry mix|freezing rain/.test(condition)) return "sleet";
+  if (/freezing (?:rain|drizzle)/.test(condition)) return "freezingRain";
+  if (/sleet|wintry mix/.test(condition)) return "sleet";
   if (/snow|flurr(?:y|ies)/.test(condition)) return "snow";
   if (/rain|shower/.test(condition)) return "rain";
   if (/drizzle/.test(condition)) return "drizzle";
@@ -78,7 +80,8 @@ export function normalizeMetNorway(data) {
   if (!Array.isArray(timeseries)) return [];
   return timeseries.map((item) => {
     const values = item?.data?.instant?.details;
-    const symbol = item?.data?.next_1_hours?.summary?.symbol_code;
+    // Longer-range steps are six hours apart and only summarize the next six hours.
+    const symbol = item?.data?.next_1_hours?.summary?.symbol_code ?? item?.data?.next_6_hours?.summary?.symbol_code;
     return reading(Date.parse(item?.time), {
       temp: values?.air_temperature,
       rain: null,
@@ -103,7 +106,7 @@ export function normalizeNws(data) {
       wind: nwsWind(period?.windSpeed),
       humidity: period?.relativeHumidity?.value,
       condition: nwsCondition(period?.shortForecast),
-      snowMentioned: /snow|flurr(?:y|ies)|wintry mix/i.test(period?.shortForecast ?? ""),
+      snowMentioned: /snow|flurr(?:y|ies)|wintry mix|sleet/i.test(period?.shortForecast ?? ""),
       night: period?.isDaytime === false,
     });
   });

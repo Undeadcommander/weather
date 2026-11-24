@@ -71,7 +71,9 @@ export const CONDITIONS = {
   fog: { label: "Fog", icon: "fog" },
   drizzle: { label: "Drizzle", icon: "drizzle" },
   rain: { label: "Rain", icon: "rain" },
+  freezingRain: { label: "Freezing rain", icon: "freezingRain" },
   sleet: { label: "Sleet", icon: "snow" },
+  hail: { label: "Hail", icon: "hail" },
   snow: { label: "Snow", icon: "snow" },
   thunder: { label: "Thunderstorms", icon: "thunder" },
 };

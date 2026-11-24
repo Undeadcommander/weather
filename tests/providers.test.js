@@ -82,11 +82,12 @@ function request(app, path, options, context) {
   return app(new Request(ORIGIN + path, options), context);
 }
 
-test("Open-Meteo aligns precipitation probability to the beginning of the hour", () => {
+test("Open-Meteo aligns precipitation probability and weather to the beginning of the hour", () => {
   const rows = normalizeOpenMeteo(openMeteo());
-  assert.deepEqual(rows[0], { t: START, temp: 12.1, rain: 25, snowfall: null, snowMentioned: false, wind: 10, humidity: 84, condition: "partlyCloudy", night: false });
-  assert.equal(rows[1].rain, null);
-  assert.equal(rows[2].condition, "rain");
+  assert.deepEqual(rows[0], { t: START, temp: 12.1, rain: 25, snowfall: null, snowMentioned: false, wind: 10, humidity: 84, condition: "clear", night: false });
+  // The hour after 1 h is missing, so its rain chance and weather are unknown.
+  assert.deepEqual([rows[1].rain, rows[1].condition], [null, null]);
+  assert.equal(rows[2].condition, null);
   assert.deepEqual(normalizeOpenMeteo({ hourly: {} }), []);
 });
 
@@ -132,22 +133,63 @@ test("MET Norway converts m/s and preserves unavailable hourly fields", () => {
   const rows = normalizeMetNorway(metNorway());
   assert.deepEqual(rows[0], { t: START, temp: 10, rain: null, snowfall: null, snowMentioned: false, wind: 10.8, humidity: 92, condition: "clear", night: true });
   assert.equal(rows[1].t - rows[0].t, 6 * HOUR);
-  assert.equal(rows[1].condition, null);
+  assert.equal(rows[1].condition, "rain");
   assert.equal(rows[1].humidity, null);
 });
 
-test("snow amounts align to the forecast hour and snow mentions survive mixed conditions", () => {
+test("snow amounts and snow weather cover the same hour and snow mentions survive mixed conditions", () => {
   const data = openMeteo();
   data.hourly.snowfall = [0, 1.5, 2];
-  assert.deepEqual(normalizeOpenMeteo(data).map(row => row.snowfall), [1.5, null, null]);
+  data.hourly.weather_code = [0, 73, 0];
+  assert.deepEqual(normalizeOpenMeteo(data).map(row => [row.snowfall, row.snowMentioned]),
+    [[1.5, true], [null, false], [null, false]]);
+  // Snow ending at the first time stamp belongs to the hour before it, not to the first row.
+  data.hourly.snowfall = [2, 0, 0];
+  data.hourly.weather_code = [71, 0, 0];
+  assert.deepEqual(normalizeOpenMeteo(data).map(row => [row.snowfall, row.snowMentioned])[0], [0, false]);
   const met = metNorway();
   met.properties.timeseries[0].data.next_1_hours.summary.symbol_code = "snowandthunder";
-  assert.equal(normalizeMetNorway(met)[0].snowMentioned, true);
+  met.properties.timeseries[1].data.next_6_hours.summary.symbol_code = "lightsnow";
+  assert.deepEqual(normalizeMetNorway(met).map(row => row.snowMentioned), [true, true]);
   const weather = nws();
   weather.properties.periods[0].shortForecast = "Chance of flurries";
   assert.equal(normalizeNws(weather)[0].snowMentioned, true);
   weather.properties.periods[0].shortForecast = "Freezing rain";
   assert.equal(normalizeNws(weather)[0].snowMentioned, false);
+});
+
+test("sleet counts as possible snow for every source, but hail and freezing rain do not", () => {
+  const met = metNorway();
+  met.properties.timeseries[0].data.next_1_hours.summary.symbol_code = "lightsleet";
+  assert.equal(normalizeMetNorway(met)[0].snowMentioned, true);
+  const weather = nws();
+  weather.properties.periods[0].shortForecast = "Chance Rain And Sleet";
+  assert.equal(normalizeNws(weather)[0].snowMentioned, true);
+  const stamp = new Date(START).toISOString();
+  const sky = icon => normalizeBrightSky({ weather: [{ timestamp: stamp, temperature: 0, icon }] })[0];
+  assert.deepEqual([sky("sleet").condition, sky("sleet").snowMentioned], ["sleet", true]);
+  assert.deepEqual([sky("hail").condition, sky("hail").snowMentioned], ["hail", false]);
+  assert.equal(sky("snow").snowMentioned, true);
+});
+
+test("hail and freezing rain have their own conditions for every source that reports them", () => {
+  const data = openMeteo();
+  data.hourly.time = data.hourly.time.map((_, i) => (START + i * HOUR) / 1000);
+  const codes = [56, 57, 66, 67, 51, 61, 95, 96, 99];
+  const conditions = codes.map(code => {
+    data.hourly.weather_code = [0, code, 0];
+    return normalizeOpenMeteo(data)[0].condition;
+  });
+  assert.deepEqual(conditions, ["freezingRain", "freezingRain", "freezingRain", "freezingRain", "drizzle", "rain", "thunder", "hail", "hail"]);
+
+  const weather = nws();
+  const nwsRow = text => {
+    weather.properties.periods[0].shortForecast = text;
+    return normalizeNws(weather)[0];
+  };
+  assert.deepEqual(["Freezing Rain", "Chance Freezing Drizzle", "Thunderstorms With Hail", "Sleet", "Wintry Mix"].map(text => nwsRow(text).condition),
+    ["freezingRain", "freezingRain", "hail", "sleet", "sleet"]);
+  assert.equal(nwsRow("Freezing Rain And Sleet").snowMentioned, true);
 });
 
 test("NWS converts temperature and wind ranges and keeps zero distinct from missing", () => {

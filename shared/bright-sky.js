@@ -6,7 +6,8 @@ export const BRIGHT_SKY_ORIGIN = "https://api.brightsky.dev";
 function skyCondition(icon) {
   if (typeof icon !== "string") return null;
   if (icon === "thunderstorm") return "thunder";
-  if (icon === "sleet" || icon === "hail") return "sleet";
+  if (icon === "sleet") return "sleet";
+  if (icon === "hail") return "hail";
   if (icon === "snow") return "snow";
   if (icon === "rain") return "rain";
   if (icon === "fog") return "fog";
@@ -35,6 +36,8 @@ export function normalizeBrightSky(data) {
     wind: item?.wind_speed,
     humidity: humidityFrom(item?.relative_humidity, item?.temperature, item?.dew_point),
     condition: skyCondition(item?.icon),
+    // Sleet counts as possible snow, as it does for the other sources; hail does not.
+    snowMentioned: item?.icon === "sleet",
     night: typeof item?.icon === "string" && item.icon.endsWith("-night"),
   }));
 }

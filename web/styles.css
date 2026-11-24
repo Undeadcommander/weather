@@ -521,6 +521,8 @@ ul { list-style: none; padding: 0; }
 .outlook-condition[data-weather="partlyCloudy"] { --weather-color: var(--amber); }
 .outlook-condition[data-weather="rain"],
 .outlook-condition[data-weather="drizzle"],
+.outlook-condition[data-weather="freezingRain"],
+.outlook-condition[data-weather="hail"],
 .outlook-condition[data-weather="snow"] { --weather-color: var(--gfs); }
 .outlook-condition[data-weather="moon"],
 .outlook-condition[data-weather="thunder"] { --weather-color: var(--purple); }

@@ -22,26 +22,33 @@ function wmoCondition(code) {
   if (code === 1 || code === 2) return "partlyCloudy";
   if (code === 3) return "cloudy";
   if ([45, 48].includes(code)) return "fog";
-  if ([51, 53, 55, 56, 57].includes(code)) return "drizzle";
-  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "rain";
+  if ([51, 53, 55].includes(code)) return "drizzle";
+  if ([56, 57, 66, 67].includes(code)) return "freezingRain";
+  if ([61, 63, 65, 80, 81, 82].includes(code)) return "rain";
   if ([71, 73, 75, 77, 85, 86].includes(code)) return "snow";
-  if ([95, 96, 99].includes(code)) return "thunder";
+  if (code === 95) return "thunder";
+  // Thunderstorms with hail; models outside Central Europe report them as plain thunderstorms.
+  if (code === 96 || code === 99) return "hail";
   return null;
 }
 
 export function normalizeOpenMeteo(data) {
   const hourly = data?.hourly;
   if (!Array.isArray(hourly?.time)) return [];
-  // Precipitation probability and snowfall cover the hour ending at each timestamp.
-  return hourly.time.map((time, i) => reading(Number.isInteger(time) ? time * 1000 : NaN, {
-    temp: hourly.temperature_2m?.[i],
-    rain: hourly.time[i + 1] === time + HOUR / 1000 ? hourly.precipitation_probability?.[i + 1] : null,
-    snowfall: hourly.time[i + 1] === time + HOUR / 1000 ? hourly.snowfall?.[i + 1] : null,
-    wind: hourly.wind_speed_10m?.[i],
-    humidity: hourly.relative_humidity_2m?.[i],
-    condition: wmoCondition(hourly.weather_code?.[i]),
-    night: hourly.is_day?.[i] === 0,
-  }));
+  // Precipitation probability, snowfall and the weather code cover the hour ending at each
+  // timestamp, so each row takes them from the next timestamp: the hour that begins at its time.
+  return hourly.time.map((time, i) => {
+    const next = hourly.time[i + 1] === time + HOUR / 1000 ? i + 1 : null;
+    return reading(Number.isInteger(time) ? time * 1000 : NaN, {
+      temp: hourly.temperature_2m?.[i],
+      rain: next === null ? null : hourly.precipitation_probability?.[next],
+      snowfall: next === null ? null : hourly.snowfall?.[next],
+      wind: hourly.wind_speed_10m?.[i],
+      humidity: hourly.relative_humidity_2m?.[i],
+      condition: next === null ? null : wmoCondition(hourly.weather_code?.[next]),
+      night: hourly.is_day?.[i] === 0,
+    });
+  });
 }
 
 export async function fetchOpenMeteo({ latitude, longitude }, signal, source = { id: "open-meteo" }) {

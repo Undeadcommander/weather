@@ -1,4 +1,4 @@
-import { formatValue, hourLabel } from "./model.js";
+import { atHour, formatValue, hourLabel } from "./model.js";
 
 const LINE_STYLES = {
   "open-meteo": { color: "--purple", dash: [] },
@@ -149,7 +149,9 @@ export function createChart(plot, tooltip, onSelect, onHover) {
     }
 
     if (model.isToday && times.length > 1) {
-      const elapsed = Math.min(1, Math.max(0, (Date.now() - times[0]) / (times.at(-1) - times[0])));
+      // Shade up to the current hour's point, where the selection line sits, not to the exact
+      // minute: the shade only moves on when the hour turns and the app re-renders.
+      const elapsed = Math.min(1, Math.max(0, (atHour(Date.now()) - times[0]) / (times.at(-1) - times[0])));
       context.fillStyle = colorFor("--chart-past");
       context.fillRect(left, top, (right - left) * elapsed, bottom - top);
     }
@@ -272,7 +274,6 @@ export function createChart(plot, tooltip, onSelect, onHover) {
   plot.addEventListener("blur", hideTooltip);
 
   document.addEventListener("themechange", redraw);
-  setInterval(redraw, 60_000);
   new ResizeObserver(redraw).observe(plot);
   document.fonts?.ready.then(redraw);
   return {

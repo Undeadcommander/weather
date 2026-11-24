@@ -1,4 +1,4 @@
-import { SOURCES } from "../shared/weather.js";
+import { HOUR, SOURCES } from "../shared/weather.js";
 import { fetchBrightSky } from "../shared/bright-sky.js";
 import { fetchOpenMeteo } from "../shared/open-meteo.js";
 import { fetchBrowserForecast, findBrowserLocations } from "../shared/browser-providers.js";
@@ -1003,5 +1003,17 @@ function setupSearch() {
   });
 }
 
+// Rolls "now" forward when the hour turns: the chart's past-hours shade advances, and a
+// selection still on the hour that just ended follows it to the new current hour.
+function scheduleHourTick() {
+  const ended = atHour(Date.now());
+  setTimeout(() => {
+    if (state.time === ended) state.time = atHour(Date.now());
+    if (view) render();
+    scheduleHourTick();
+  }, ended + HOUR - Date.now() + 50);
+}
+
 setupSearch();
 loadForecasts();
+scheduleHourTick();

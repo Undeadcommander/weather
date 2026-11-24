@@ -46,7 +46,7 @@ function openMeteoFixture({ rows }) {
     precipitation_probability: [0, ...rows.map(({ rain }) => rain)],
     wind_speed_10m: rows.map(({ wind }) => wind),
     relative_humidity_2m: rows.map(({ humidity }) => humidity),
-    weather_code: rows.map(() => 3),
+    weather_code: [3, ...rows.map(() => 3)],
     is_day: rows.map(() => 1),
   } };
 }
@@ -58,8 +58,8 @@ function brightSkyFixture({ rows }) {
   })) };
 }
 
-async function mockDashboard(page, { forecast, cities } = {}) {
-  await page.clock.setFixedTime(START + 15_000);
+async function mockDashboard(page, { forecast, cities, fixedTime = true } = {}) {
+  if (fixedTime) await page.clock.setFixedTime(START + 15_000);
   const requests = [];
   async function routeForecast(route) {
     const url = new URL(route.request().url());
@@ -317,6 +317,30 @@ for (const width of [1440, 900, 375]) {
   });
 }
 
+test("shades the chart up to the current hour and moves on with the selection when the hour turns", async ({ page }) => {
+  await page.clock.install({ time: START + 40 * 60_000 });
+  await mockDashboard(page, { fixedTime: false });
+  await initialForecast(page);
+  await expect(page.locator("#detail-time")).toContainText("9 AM PST");
+  const shadeAt = hours => page.locator("#chart").evaluate((element, hours) => {
+    const context = element.getContext("2d");
+    const scale = element.width / element.clientWidth;
+    return hours.map(hour => context.getImageData(
+      Math.round((42 + (element.clientWidth - 58) * hour / 23) * scale), Math.round(17 * scale), 1, 1,
+    ).data[3]);
+  }, hours);
+  // 9:40: the shade stops at the 9 AM line rather than creeping toward 10 AM.
+  let [past, ahead] = await shadeAt([8.9, 9.6]);
+  expect(past).toBeGreaterThan(0);
+  expect(ahead).toBe(0);
+
+  await page.clock.fastForward(21 * 60_000);
+  await expect(page.locator("#detail-time")).toContainText("10 AM PST");
+  [past, ahead] = await shadeAt([9.6, 10.4]);
+  expect(past).toBeGreaterThan(0);
+  expect(ahead).toBe(0);
+});
+
 test("switches rain, wind, and temperature and handles missing rain probability", async ({ page }) => {
   await mockDashboard(page);
   await initialForecast(page);
@@ -356,7 +380,9 @@ test("shows hourly conditions and opens Snow only for a selected source and date
   await mockDashboard(page, { forecast: async (route, source) => {
     if (source !== "open-meteo") return false;
     const data = openMeteoFixture(fixture(source));
-    data.hourly.weather_code[0] = 0;
+    data.hourly.weather_code[1] = 0;
+    data.hourly.weather_code[2] = 66;
+    data.hourly.weather_code[3] = 96;
     data.hourly.snowfall = Array(data.hourly.time.length).fill(0);
     data.hourly.snowfall[17] = 2.54;
     await route.fulfill({ json: data });
@@ -369,6 +395,12 @@ test("shows hourly conditions and opens Snow only for a selected source and date
   const outlook = page.locator("#outlook");
   const first = outlook.getByRole("row", { name: /^9 AM PST/ });
   await expect(first.locator("td")).toHaveText(["Sunny", "Cloudy", "Partly cloudy"]);
+  for (const [hour, label, weather] of [["10 AM", "Freezing rain", "freezingRain"], ["11 AM", "Hail", "hail"]]) {
+    const cell = outlook.getByRole("row", { name: new RegExp(`^${hour} PST`) }).locator("td").first();
+    await expect(cell).toHaveText(label);
+    await expect(cell.locator(".outlook-condition")).toHaveAttribute("data-weather", weather);
+    await expect(cell.locator("use")).toHaveAttribute("href", `#icon-${weather}`);
+  }
   await outlook.getByRole("row", { name: /^10 AM PST/ }).locator("td").first().click();
   await expect(page.locator("#detail-time")).toContainText("10 AM PST");
   await expect(outlook.getByRole("button", { name: "10 AM PST" })).toHaveAttribute("aria-pressed", "true");

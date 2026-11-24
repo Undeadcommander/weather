@@ -54,6 +54,7 @@ Each source has its own chart color and line pattern. Forecast range and availab
 
 - Skylens aligns every forecast to the same hours in UTC and shows them in the location's time zone.
 - Rain chance applies to the hour that begins at the time shown. MET Norway doesn't publish rain chance, and its longer-range forecasts can be several hours apart.
+- Snow amounts come from the Open-Meteo sources and, like their sky conditions, apply to the hour that begins at the time shown. MET Norway, the National Weather Service and DWD MOSMIX don't publish hourly amounts, so they show *Snow possible* when they forecast snow or sleet.
 - When the National Weather Service gives a wind range, Skylens uses its midpoint.
 - DWD MOSMIX doesn't publish rain chance for most places, and Skylens estimates its humidity from the dew point when the station doesn't report it.
 - Skylens labels forecasts that come from its cache.
