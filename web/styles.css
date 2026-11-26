@@ -574,7 +574,7 @@ ul { list-style: none; padding: 0; }
 .insights .insight { min-width: 0; }
 .source-panel .panel-heading { margin-bottom: .65rem; align-items: start; }
 .count-pill { color: var(--accent-dark); background: var(--lavender); border-radius: 999px; padding: .25rem .58rem; font-weight: 800; font-size: .82rem; white-space: nowrap; }
-.source-list { display: grid; max-height: 22rem; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; padding-right: .8rem; }
+.source-list { display: grid; grid-auto-rows: max-content; max-height: 22rem; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; padding-right: .8rem; }
 .source-list::-webkit-scrollbar { display: none; }
 .source-list:focus-visible { outline-offset: -2px; }
 .source-list-wrap { position: relative; }
